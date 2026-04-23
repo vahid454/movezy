@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: movezy-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: movezy
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - movezy-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: movezy-backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MONGODB_URI=mongodb://mongodb:27017/movezy
+      - JWT_SECRET=change_this_in_production_please
+      - JWT_EXPIRE=7d
+      - OTP_DEV_MODE=true
+      - OTP_DEV_CODE=123456
+      - ADMIN_SECRET_KEY=your_admin_secret
+    depends_on:
+      - mongodb
+    volumes:
+      - uploads_data:/app/uploads
+    networks:
+      - movezy-network
+
+  admin-panel:
+    build:
+      context: ./admin-panel
+      dockerfile: Dockerfile
+    container_name: movezy-admin
+    restart: unless-stopped
+    ports:
+      - "3001:80"
+    environment:
+      - REACT_APP_API_URL=http://localhost:3000/api
+    depends_on:
+      - backend
+    networks:
+      - movezy-network
+
+volumes:
+  mongodb_data:
+  uploads_data:
+
+networks:
+  movezy-network:
+    driver: bridge

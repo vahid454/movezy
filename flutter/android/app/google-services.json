@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "74023901115",
+    "project_id": "movezy-b701d",
+    "storage_bucket": "movezy-b701d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:74023901115:android:68b4230691a0a473ddd69e",
+        "android_client_info": {
+          "package_name": "com.movezy"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDTSE-H7ncD4I6vwX6i0hmY58zk_xHNyUc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

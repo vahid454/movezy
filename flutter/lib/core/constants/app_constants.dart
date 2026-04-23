@@ -1,0 +1,139 @@
+class AppConstants {
+  // ── Change for production ──────────────────────────────────────
+  // Android Emulator  → 10.0.2.2
+  // Physical device   → your LAN IP, e.g. 192.168.1.10
+  // Production        → https://api.yourdomain.com
+  static const String baseUrl = String.fromEnvironment(
+    'MOVEZY_API_URL',
+    defaultValue: 'http://10.0.2.2:3000/api',
+  );
+  static const String socketUrl = String.fromEnvironment(
+    'MOVEZY_SOCKET_URL',
+    defaultValue: 'http://10.0.2.2:3000',
+  );
+
+  // Shared prefs keys
+  static const String keyToken = 'auth_token';
+  static const String keyUser = 'user_data';
+  static const String keyFcmToken = 'fcm_token';
+  static const String keyNightMaps = 'night_maps_enabled';
+  static const String keyRegisteredDriverPhones = 'registered_driver_phones';
+
+  // Maps
+  static const double defaultZoom = 15.0;
+  static const double dashboardMapZoom = 14.2;
+
+  // Search
+  static const int searchRadiusM = 5000;
+
+  // Support
+  static const String supportPhone = '+919876543210';
+  static const String supportEmail = 'support@movezy.in';
+  static const String supportWhatsApp = 'https://wa.me/919876543210';
+
+  static bool get usesEmulatorLoopback =>
+      baseUrl.contains('10.0.2.2') || socketUrl.contains('10.0.2.2');
+
+  static String get localBackendHint =>
+      'If you are testing on a real phone, replace 10.0.2.2 with your computer\'s LAN IP using '
+      '--dart-define=MOVEZY_API_URL=http://<YOUR-IP>:3000/api '
+      'and --dart-define=MOVEZY_SOCKET_URL=http://<YOUR-IP>:3000.';
+}
+
+class AppRoutes {
+  static const splash = '/';
+  static const onboarding = '/onboarding';
+  static const login = '/login';
+  static const otpVerify = '/otp';
+  static const driverRegister = '/driver-register';
+  static const customerHome = '/customer/home';
+  static const booking = '/customer/booking';
+  static const bookingHistory = '/customer/history';
+  static const rateBooking = '/customer/rate';
+  static const driverHome = '/driver/home';
+  static const tripHistory = '/driver/history';
+  static const driverPending = '/driver/pending';
+  static const driverProfile = '/driver/profile';
+}
+
+// ── Vehicle catalogue ────────────────────────────────────────────
+class VehicleOption {
+  final String type;
+  final String emoji;
+  final String name;
+  final String desc;
+  final int baseFare;
+  final int perKm;
+  final int colorHex;
+
+  const VehicleOption({
+    required this.type,
+    required this.emoji,
+    required this.name,
+    required this.desc,
+    required this.baseFare,
+    required this.perKm,
+    required this.colorHex,
+  });
+
+  int estimateFare(double km) => (baseFare + perKm * km).round();
+}
+
+const kVehicles = [
+  VehicleOption(
+      type: 'bike',
+      emoji: '🏍️',
+      name: 'Bike',
+      desc: 'Small packages, quick delivery',
+      baseFare: 20,
+      perKm: 8,
+      colorHex: 0xFF22C55E),
+  VehicleOption(
+      type: 'auto',
+      emoji: '🛺',
+      name: 'Auto',
+      desc: 'Medium goods, city transport',
+      baseFare: 30,
+      perKm: 12,
+      colorHex: 0xFF3B82F6),
+  VehicleOption(
+      type: 'mini_truck',
+      emoji: '🚐',
+      name: 'Mini Truck',
+      desc: 'Furniture & appliances',
+      baseFare: 80,
+      perKm: 20,
+      colorHex: 0xFFF59E0B),
+  VehicleOption(
+      type: 'tempo',
+      emoji: '🚚',
+      name: 'Tempo',
+      desc: 'Office & home shifting',
+      baseFare: 100,
+      perKm: 30,
+      colorHex: 0xFF8B5CF6),
+  VehicleOption(
+      type: 'truck',
+      emoji: '🚛',
+      name: 'Truck',
+      desc: 'Heavy goods & warehouse',
+      baseFare: 200,
+      perKm: 50,
+      colorHex: 0xFFEF4444),
+  VehicleOption(
+      type: 'pickup',
+      emoji: '🛻',
+      name: 'Pickup',
+      desc: 'Flat goods, bikes & material',
+      baseFare: 120,
+      perKm: 35,
+      colorHex: 0xFFFF6B00),
+];
+
+VehicleOption? vehicleByType(String t) {
+  try {
+    return kVehicles.firstWhere((v) => v.type == t);
+  } catch (_) {
+    return null;
+  }
+}
