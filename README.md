@@ -409,3 +409,4 @@ REACT_APP_API_URL=https://your-backend.com/api npm run build
 
 *Built with ❤️ — Movezy v1.0.0*
 # movezy
+# movezy
