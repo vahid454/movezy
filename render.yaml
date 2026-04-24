@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: movezy-backend
+    env: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        value: your_mongodb_uri
+      - key: JWT_SECRET
+        value: super_secret_change_this
+      - key: JWT_EXPIRE
+        value: 7d
+      - key: OTP_DEV_MODE
+        value: true
+      - key: OTP_DEV_CODE
+        value: 102030
+      - key: ADMIN_SECRET_KEY
+        value: your_admin_key
+
+  - type: web
+    name: movezy-admin
+    env: static
+    rootDir: admin-panel
+    buildCommand: npm install && npm run build
+    staticPublishPath: build
+    plan: free
+    envVars:
+      - key: REACT_APP_API_URL
+        value: https://movezy-backend.onrender.com/api
