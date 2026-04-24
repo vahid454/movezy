@@ -24,13 +24,12 @@ services:
       - key: ADMIN_SECRET_KEY
         value: your_admin_key
 
-  - type: web
+  - type: static
     name: movezy-admin
     env: static
     rootDir: admin-panel
     buildCommand: npm install && npm run build
     staticPublishPath: build
-    plan: free
     envVars:
       - key: REACT_APP_API_URL
         value: https://movezy-backend.onrender.com/api
