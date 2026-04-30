@@ -21,6 +21,11 @@ const toValidCoordinate = (value, min, max) => {
   return parsedValue;
 };
 
+const toPublicDocumentPath = (file) => {
+  if (!file?.filename) return null;
+  return `/uploads/documents/${file.filename}`;
+};
+
 // Multer config
 const documentsUploadDir = path.join(process.cwd(), 'uploads', 'documents');
 
@@ -70,10 +75,10 @@ router.post('/register', docFields, async (req, res) => {
 
     const documents = {};
     if (req.files) {
-      if (req.files.licenseImage) documents.licenseImage = req.files.licenseImage[0].path;
-      if (req.files.vehicleRC) documents.vehicleRC = req.files.vehicleRC[0].path;
-      if (req.files.insurance) documents.insurance = req.files.insurance[0].path;
-      if (req.files.profilePhoto) documents.profilePhoto = req.files.profilePhoto[0].path;
+      if (req.files.licenseImage) documents.licenseImage = toPublicDocumentPath(req.files.licenseImage[0]);
+      if (req.files.vehicleRC) documents.vehicleRC = toPublicDocumentPath(req.files.vehicleRC[0]);
+      if (req.files.insurance) documents.insurance = toPublicDocumentPath(req.files.insurance[0]);
+      if (req.files.profilePhoto) documents.profilePhoto = toPublicDocumentPath(req.files.profilePhoto[0]);
     }
 
     const driver = await Driver.create({

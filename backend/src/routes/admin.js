@@ -7,6 +7,41 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const { sendPushNotification } = require('../utils/notifications');
 const { logAuditEvent } = require('../utils/auditLogger');
 
+const toAbsoluteAssetUrl = (req, documentPath) => {
+  if (!documentPath) return documentPath;
+  if (/^https?:\/\//i.test(documentPath)) return documentPath;
+
+  let normalizedPath = documentPath;
+  if (!normalizedPath.startsWith('/')) {
+    if (normalizedPath.includes('/uploads/')) {
+      normalizedPath = normalizedPath.slice(normalizedPath.indexOf('/uploads/'));
+    } else if (normalizedPath.startsWith('uploads/')) {
+      normalizedPath = `/${normalizedPath}`;
+    } else {
+      return documentPath;
+    }
+  }
+
+  return `${req.protocol}://${req.get('host')}${normalizedPath}`;
+};
+
+const normalizeDriverDocuments = (req, driver) => {
+  if (!driver) return driver;
+  const driverObj = typeof driver.toObject === 'function' ? driver.toObject() : driver;
+  if (!driverObj.documents) return driverObj;
+
+  return {
+    ...driverObj,
+    documents: {
+      ...driverObj.documents,
+      licenseImage: toAbsoluteAssetUrl(req, driverObj.documents.licenseImage),
+      vehicleRC: toAbsoluteAssetUrl(req, driverObj.documents.vehicleRC),
+      insurance: toAbsoluteAssetUrl(req, driverObj.documents.insurance),
+      profilePhoto: toAbsoluteAssetUrl(req, driverObj.documents.profilePhoto)
+    }
+  };
+};
+
 // GET /api/admin/dashboard
 router.get('/dashboard', authenticate, requireRole('admin'), async (req, res) => {
   try {
@@ -139,7 +174,12 @@ router.get('/drivers', authenticate, requireRole('admin'), async (req, res) => {
       .skip((page - 1) * limit)
       .limit(parseInt(limit));
     const total = await Driver.countDocuments(query);
-    res.json({ success: true, drivers, total, pages: Math.ceil(total / limit) });
+    res.json({
+      success: true,
+      drivers: drivers.map((driver) => normalizeDriverDocuments(req, driver)),
+      total,
+      pages: Math.ceil(total / limit)
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -150,7 +190,7 @@ router.get('/driver/:id', authenticate, requireRole('admin'), async (req, res) =
   try {
     const driver = await Driver.findById(req.params.id).populate('user', 'name phone createdAt lastSeen');
     if (!driver) return res.status(404).json({ error: 'Driver not found' });
-    res.json({ success: true, driver });
+    res.json({ success: true, driver: normalizeDriverDocuments(req, driver) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
