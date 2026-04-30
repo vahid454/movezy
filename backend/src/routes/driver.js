@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
+const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const User = require('../models/User');
@@ -21,8 +22,17 @@ const toValidCoordinate = (value, min, max) => {
 };
 
 // Multer config
+const documentsUploadDir = path.join(process.cwd(), 'uploads', 'documents');
+
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/documents/'),
+  destination: (req, file, cb) => {
+    try {
+      fs.mkdirSync(documentsUploadDir, { recursive: true });
+      cb(null, documentsUploadDir);
+    } catch (error) {
+      cb(error);
+    }
+  },
   filename: (req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname)}`)
 });
 const upload = multer({
