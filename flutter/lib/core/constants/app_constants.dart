@@ -17,6 +17,7 @@ class AppConstants {
   static const String keyUser = 'user_data';
   static const String keyFcmToken = 'fcm_token';
   static const String keyNightMaps = 'night_maps_enabled';
+  static const String keyAppThemeMode = 'app_theme_mode';
   static const String keyRegisteredDriverPhones = 'registered_driver_phones';
 
   // Maps
@@ -64,6 +65,7 @@ class VehicleOption {
   final String desc;
   final int baseFare;
   final int perKm;
+  final int minFare;
   final int colorHex;
 
   const VehicleOption({
@@ -73,10 +75,21 @@ class VehicleOption {
     required this.desc,
     required this.baseFare,
     required this.perKm,
+    required this.minFare,
     required this.colorHex,
   });
 
-  int estimateFare(double km) => (baseFare + perKm * km).round();
+  int estimateFare(double km) {
+    final distance = km < 0 ? 0 : km;
+    final baseDistanceFare = baseFare + (perKm * distance);
+    final longDistanceSurcharge = distance > 10 ? (distance - 10) * (perKm * 0.2) : 0;
+    final bookingFee = 10;
+    final hour = DateTime.now().hour;
+    final isPeakHour = (hour >= 8 && hour <= 11) || (hour >= 17 && hour <= 21);
+    final peakMultiplier = isPeakHour ? 1.2 : 1.0;
+    final grossFare = (baseDistanceFare + longDistanceSurcharge + bookingFee) * peakMultiplier;
+    return grossFare < minFare ? minFare : grossFare.round();
+  }
 }
 
 const kVehicles = [
@@ -87,6 +100,7 @@ const kVehicles = [
       desc: 'Small packages, quick delivery',
       baseFare: 20,
       perKm: 8,
+      minFare: 35,
       colorHex: 0xFF22C55E),
   VehicleOption(
       type: 'auto',
@@ -95,6 +109,7 @@ const kVehicles = [
       desc: 'Medium goods, city transport',
       baseFare: 30,
       perKm: 12,
+      minFare: 55,
       colorHex: 0xFF3B82F6),
   VehicleOption(
       type: 'mini_truck',
@@ -103,6 +118,7 @@ const kVehicles = [
       desc: 'Furniture & appliances',
       baseFare: 80,
       perKm: 20,
+      minFare: 140,
       colorHex: 0xFFF59E0B),
   VehicleOption(
       type: 'tempo',
@@ -111,6 +127,7 @@ const kVehicles = [
       desc: 'Office & home shifting',
       baseFare: 100,
       perKm: 30,
+      minFare: 180,
       colorHex: 0xFF8B5CF6),
   VehicleOption(
       type: 'truck',
@@ -119,6 +136,7 @@ const kVehicles = [
       desc: 'Heavy goods & warehouse',
       baseFare: 200,
       perKm: 50,
+      minFare: 320,
       colorHex: 0xFFEF4444),
   VehicleOption(
       type: 'pickup',
@@ -127,6 +145,7 @@ const kVehicles = [
       desc: 'Flat goods, bikes & material',
       baseFare: 120,
       perKm: 35,
+      minFare: 220,
       colorHex: 0xFFFF6B00),
 ];
 

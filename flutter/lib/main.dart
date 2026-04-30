@@ -10,9 +10,9 @@ void main() async {
 
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-    systemNavigationBarColor: Color(0xFF141414),
-    systemNavigationBarIconBrightness: Brightness.light,
+    statusBarIconBrightness: Brightness.dark,
+    systemNavigationBarColor: Color(0xFFF6F8FC),
+    systemNavigationBarIconBrightness: Brightness.dark,
   ));
 
   await SystemChrome.setPreferredOrientations([
@@ -31,11 +31,16 @@ class MovezyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'Movezy',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark,
-      routerConfig: appRouter,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: SessionManager.instance.appThemeMode,
+      builder: (context, themeMode, _) => MaterialApp.router(
+        title: 'Movezy',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: themeMode,
+        routerConfig: appRouter,
+      ),
     );
   }
 }

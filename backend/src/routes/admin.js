@@ -5,6 +5,7 @@ const Driver = require('../models/Driver');
 const Booking = require('../models/Booking');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { sendPushNotification } = require('../utils/notifications');
+const { logAuditEvent } = require('../utils/auditLogger');
 
 // GET /api/admin/dashboard
 router.get('/dashboard', authenticate, requireRole('admin'), async (req, res) => {
@@ -165,6 +166,13 @@ router.put('/driver/:id/approve', authenticate, requireRole('admin'), async (req
     driver.reviewedBy = req.userId;
     driver.reviewedAt = new Date();
     await driver.save();
+    logAuditEvent({
+      req,
+      action: 'approve_driver',
+      entityType: 'driver',
+      entityId: driver._id,
+      metadata: { approvalStatus: driver.approvalStatus }
+    });
 
     if (driver.user?.fcmToken) {
       await sendPushNotification(driver.user.fcmToken, '🎉 Account Approved!',
@@ -191,6 +199,13 @@ router.put('/driver/:id/reject', authenticate, requireRole('admin'), async (req,
     driver.reviewedBy = req.userId;
     driver.reviewedAt = new Date();
     await driver.save();
+    logAuditEvent({
+      req,
+      action: 'reject_driver',
+      entityType: 'driver',
+      entityId: driver._id,
+      metadata: { rejectionReason: driver.rejectionReason }
+    });
 
     if (driver.user?.fcmToken) {
       await sendPushNotification(driver.user.fcmToken, 'Account Review Update',
@@ -246,6 +261,12 @@ router.put('/user/:id/toggle', authenticate, requireRole('admin'), async (req, r
     if (!user) return res.status(404).json({ error: 'User not found' });
     user.isActive = !user.isActive;
     await user.save();
+    logAuditEvent({
+      req,
+      action: user.isActive ? 'activate_user' : 'deactivate_user',
+      entityType: 'user',
+      entityId: user._id
+    });
     res.json({ success: true, isActive: user.isActive });
   } catch (err) {
     res.status(500).json({ error: err.message });

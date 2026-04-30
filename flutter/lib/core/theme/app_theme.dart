@@ -6,15 +6,15 @@ class AppColors {
   static const primary = Color(0xFFFF6B00);
   static const primaryDark = Color(0xFFE05A00);
   static const primaryGlow = Color(0x33FF6B00);
-  static const background = Color(0xFF0A0A0A);
-  static const surface = Color(0xFF141414);
-  static const surface2 = Color(0xFF1E1E1E);
-  static const surface3 = Color(0xFF252525);
-  static const cardBg = Color(0xFF171717);
-  static const textPrimary = Color(0xFFF5F5F5);
-  static const textSecondary = Color(0xFF8A8A8A);
-  static const textMuted = Color(0xFF5A5A5A);
-  static const border = Color(0xFF2A2A2A);
+  static const background = Color(0xFFF6F8FC);
+  static const surface = Color(0xFFFFFFFF);
+  static const surface2 = Color(0xFFF2F5FB);
+  static const surface3 = Color(0xFFE6ECF7);
+  static const cardBg = Color(0xFFFFFFFF);
+  static const textPrimary = Color(0xFF0F172A);
+  static const textSecondary = Color(0xFF5B6472);
+  static const textMuted = Color(0xFF7E8794);
+  static const border = Color(0xFFDCE3EE);
   static const success = Color(0xFF22C55E);
   static const successBg = Color(0x1A22C55E);
   static const danger = Color(0xFFEF4444);
@@ -26,22 +26,55 @@ class AppColors {
 }
 
 class AppTheme {
-  static ThemeData get dark {
-    final base = ThemeData.dark(useMaterial3: true);
-    return base.copyWith(
-      scaffoldBackgroundColor: AppColors.background,
-      colorScheme: const ColorScheme.dark(
+  static ThemeData get light {
+    final base = ThemeData.light(useMaterial3: true);
+    return _themeFrom(
+      base: base,
+      scheme: const ColorScheme.light(
         primary: AppColors.primary,
         onPrimary: Colors.white,
         surface: AppColors.surface,
         background: AppColors.background,
         error: AppColors.danger,
       ),
+      overlayStyle: SystemUiOverlayStyle.dark.copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: AppColors.surface,
+      ),
+    );
+  }
+
+  static ThemeData get dark {
+    final base = ThemeData.dark(useMaterial3: true);
+    return _themeFrom(
+      base: base,
+      scheme: const ColorScheme.dark(
+        primary: AppColors.primary,
+        onPrimary: Colors.white,
+        surface: Color(0xFF141414),
+        background: Color(0xFF0A0A0A),
+        error: AppColors.danger,
+      ),
+      overlayStyle: SystemUiOverlayStyle.light.copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: const Color(0xFF141414),
+      ),
+    );
+  }
+
+  static ThemeData _themeFrom({
+    required ThemeData base,
+    required ColorScheme scheme,
+    required SystemUiOverlayStyle overlayStyle,
+  }) {
+    return base.copyWith(
+      scaffoldBackgroundColor: AppColors.background,
+      colorScheme: scheme,
       appBarTheme: AppBarTheme(
         backgroundColor: AppColors.surface,
         elevation: 0,
         centerTitle: false,
-        systemOverlayStyle: SystemUiOverlayStyle.light,
+        systemOverlayStyle: overlayStyle,
         titleTextStyle: GoogleFonts.dmSans(
           fontSize: 18,
           fontWeight: FontWeight.w700,

@@ -10,10 +10,13 @@ class SessionManager {
 
   SharedPreferences? _p;
   final ValueNotifier<bool> nightMapsEnabled = ValueNotifier(true);
+  final ValueNotifier<ThemeMode> appThemeMode = ValueNotifier(ThemeMode.light);
 
   Future<void> init() async {
     _p = await SharedPreferences.getInstance();
-    nightMapsEnabled.value = _p?.getBool(AppConstants.keyNightMaps) ?? true;
+    nightMapsEnabled.value = _p?.getBool(AppConstants.keyNightMaps) ?? false;
+    final storedThemeMode = _p?.getString(AppConstants.keyAppThemeMode) ?? 'light';
+    appThemeMode.value = storedThemeMode == 'dark' ? ThemeMode.dark : ThemeMode.light;
   }
 
   Future<void> saveSession(String token, UserModel user) async {
@@ -46,6 +49,14 @@ class SessionManager {
   Future<void> setNightMapsEnabled(bool enabled) async {
     nightMapsEnabled.value = enabled;
     await _p?.setBool(AppConstants.keyNightMaps, enabled);
+  }
+
+  Future<void> setAppThemeMode(ThemeMode mode) async {
+    appThemeMode.value = mode;
+    await _p?.setString(
+      AppConstants.keyAppThemeMode,
+      mode == ThemeMode.dark ? 'dark' : 'light',
+    );
   }
 
   List<String> getRegisteredDriverPhones() =>

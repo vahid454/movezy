@@ -24,6 +24,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Position? _pos;
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
+  List<LatLng> _tripRoutePath = const [];
+  String? _tripRouteKey;
   List<NearbyDriver> _nearbyDrivers = const [];
   BookingModel? _activeBooking;
   String? _driverPhone;
@@ -156,6 +158,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         _activeBooking = null;
         _driverPhone = null;
         _driverLatLng = null;
+        _tripRoutePath = const [];
+        _tripRouteKey = null;
       });
       _refreshNearbyDrivers(fitCamera: true);
       if (bid != null) {
@@ -172,6 +176,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         _activeBooking = null;
         _driverPhone = null;
         _driverLatLng = null;
+        _tripRoutePath = const [];
+        _tripRouteKey = null;
       });
       _refreshNearbyDrivers(fitCamera: true);
     });
@@ -189,6 +195,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         _driverLatLng = lat != null && lng != null ? LatLng(lat, lng) : null;
         if (b != null) {
           _nearbyDrivers = const [];
+        } else {
+          _tripRoutePath = const [];
+          _tripRouteKey = null;
         }
       });
       if (b != null) {
@@ -284,11 +293,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           Marker(
             markerId: MarkerId('nearby_${driver.id}'),
             position: LatLng(lat, lng),
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueOrange,
-            ),
+            icon: BitmapDescriptor.defaultMarkerWithHue(_markerHueForVehicle(driver.vehicleType)),
             infoWindow: InfoWindow(
-              title: driver.name.isNotEmpty ? driver.name : 'Nearby driver',
+              title: '${_vehicleEmoji(driver.vehicleType)} ${driver.name.isNotEmpty ? driver.name : 'Nearby driver'}',
               snippet:
                   '${driver.vehicleNumber} · ${driver.vehicleType.replaceAll('_', ' ')}',
             ),
@@ -304,10 +311,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         LatLng(dropoff.latitude, dropoff.longitude),
     ];
     if (routePoints.length >= 2) {
+      _ensureTripRoutePath(routePoints[0], routePoints[1]);
       nextPolylines.add(
         Polyline(
           polylineId: const PolylineId('trip-route'),
-          points: routePoints,
+          points: _tripRoutePath.length >= 2 ? _tripRoutePath : routePoints,
           width: 5,
           color: AppColors.primary,
           geodesic: true,
@@ -358,6 +366,58 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               .take(4)
               .map((driver) => LatLng(driver.latitude!, driver.longitude!)),
       ]);
+    }
+  }
+
+  String _vehicleEmoji(String vehicleType) {
+    final vehicle = vehicleByType(vehicleType);
+    return vehicle?.emoji ?? '🚘';
+  }
+
+  double _markerHueForVehicle(String vehicleType) {
+    switch (vehicleType) {
+      case 'bike':
+        return BitmapDescriptor.hueGreen;
+      case 'auto':
+        return BitmapDescriptor.hueAzure;
+      case 'mini_truck':
+        return BitmapDescriptor.hueOrange;
+      case 'tempo':
+        return BitmapDescriptor.hueViolet;
+      case 'truck':
+        return BitmapDescriptor.hueRed;
+      case 'pickup':
+        return BitmapDescriptor.hueYellow;
+      default:
+        return BitmapDescriptor.hueOrange;
+    }
+  }
+
+  Future<void> _ensureTripRoutePath(LatLng start, LatLng end) async {
+    final routeKey = '${start.latitude.toStringAsFixed(5)},${start.longitude.toStringAsFixed(5)}:${end.latitude.toStringAsFixed(5)},${end.longitude.toStringAsFixed(5)}';
+    if (_tripRouteKey == routeKey && _tripRoutePath.isNotEmpty) return;
+
+    _tripRouteKey = routeKey;
+    try {
+      final routeCoordinates = await _api.getRoutePath(
+        originLat: start.latitude,
+        originLng: start.longitude,
+        destinationLat: end.latitude,
+        destinationLng: end.longitude,
+      );
+      if (!mounted || _tripRouteKey != routeKey) return;
+
+      final routePath = routeCoordinates
+          .map((coordinate) => LatLng(coordinate[0], coordinate[1]))
+          .toList();
+      setState(() {
+        _tripRoutePath = routePath.length >= 2 ? routePath : const [];
+      });
+    } catch (_) {
+      if (!mounted || _tripRouteKey != routeKey) return;
+      setState(() {
+        _tripRoutePath = const [];
+      });
     }
   }
 
@@ -661,14 +721,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         accent: AppColors.warning,
       );
     }
-    if (AppConstants.usesEmulatorLoopback) {
-      return InlineNoticeCard(
-        icon: Icons.wifi_tethering_error_rounded,
-        title: 'Local backend is set to emulator mode',
-        subtitle: AppConstants.localBackendHint,
-        accent: AppColors.info,
-      );
-    }
     if (_activeBooking == null && _pos != null && _nearbyDrivers.isEmpty) {
       return const InlineNoticeCard(
         icon: Icons.radar_outlined,
@@ -705,9 +757,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   _mapReady = true;
                   _refreshMapOverlay(fitCamera: true);
                 },
-                style: SessionManager.instance.nightMapsEnabled.value
-                    ? _kMapStyle
-                    : null,
+                style: null,
                 markers: _markers,
                 polylines: _polylines,
                 padding: EdgeInsets.only(
@@ -806,6 +856,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                                 : 'Live map ready'
                             : 'Live map ready',
                       ),
+                      if (_pos != null)
+                        InfoPill(
+                          icon: Icons.my_location,
+                          label: '${_pos!.latitude.toStringAsFixed(4)}, ${_pos!.longitude.toStringAsFixed(4)}',
+                          color: AppColors.info,
+                        ),
                       InfoPill(
                         icon: Icons.directions_car_filled_outlined,
                         label: _driverPhone != null
@@ -986,7 +1042,7 @@ class _HomePanel extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         SizedBox(
-          height: 88,
+          height: 98,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: kVehicles.length,
@@ -996,7 +1052,7 @@ class _HomePanel extends StatelessWidget {
               return GestureDetector(
                 onTap: onBook,
                 child: Container(
-                  width: 78,
+                  width: 82,
                   decoration: BoxDecoration(
                     color: AppColors.surface2,
                     borderRadius: BorderRadius.circular(16),
@@ -1012,6 +1068,8 @@ class _HomePanel extends StatelessWidget {
                               fontSize: 10,
                               color: AppColors.textSecondary,
                               fontWeight: FontWeight.w600),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.center),
                     ],
                   ),

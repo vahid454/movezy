@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pinput/pinput.dart';
 import 'package:movezy/core/constants/app_constants.dart';
 import 'package:movezy/core/theme/app_theme.dart';
 import 'package:movezy/core/widgets/widgets.dart';
+import 'package:movezy/data/datasources/api_service.dart';
 import 'package:movezy/data/models/models.dart';
-import 'package:movezy/services/phone_auth_service.dart';
 import 'package:movezy/services/session_manager.dart';
 
 class OtpScreen extends StatefulWidget {
@@ -31,6 +30,7 @@ class _OtpScreenState extends State<OtpScreen> {
   bool _loading = false;
   int _seconds = 30;
   Timer? _timer;
+  final _api = ApiService();
 
   @override
   void initState() {
@@ -61,34 +61,33 @@ class _OtpScreenState extends State<OtpScreen> {
     if (_otpCtrl.text.length != 6) return;
     setState(() => _loading = true);
     try {
-      final res = await PhoneAuthService.instance.verifyOtp(
-        _otpCtrl.text,
+      final res = await _api.verifyOtp(
+        phone: widget.phone,
+        otp: _otpCtrl.text,
+        name: widget.isDriver ? null : widget.name,
+        isDriver: widget.isDriver,
       );
-      final firebaseUser = res.user;
-      if (firebaseUser == null) {
-        throw FirebaseAuthException(
-          code: 'missing-user',
-          message: 'Phone verification completed without a user session.',
-        );
+      if (res['success'] != true) {
+        throw Exception('OTP verification failed');
       }
 
-      final token = await firebaseUser.getIdToken();
-      final user = UserModel(
-        id: firebaseUser.uid,
-        name: (widget.name?.trim().isNotEmpty ?? false)
-            ? widget.name!.trim()
-            : (widget.isDriver ? 'Driver' : widget.phone),
-        phone: widget.phone,
-        role: widget.isDriver ? 'driver' : 'customer',
-      );
-      await SessionManager.instance.saveSession(token ?? '', user);
+      final token = (res['token'] ?? '').toString();
+      final userJson = (res['user'] as Map?)?.cast<String, dynamic>() ?? {};
+      final user = UserModel.fromJson(userJson);
+      await SessionManager.instance.saveSession(token, user);
       if (!mounted) return;
       context.go(
         user.isDriver ? AppRoutes.driverHome : AppRoutes.customerHome,
       );
-    } on FirebaseAuthException catch (e) {
+    } on Exception catch (e) {
       if (!mounted) return;
-      final msg = e.message ?? 'Verification failed';
+      var msg = e.toString().replaceFirst('Exception: ', '');
+      if (msg.contains('status code of 403') && widget.isDriver) {
+        msg = 'Thanks for registering. Your profile is under review. Please wait while our backend team processes your approval.';
+      }
+      if (msg.contains('status code of 404') && widget.isDriver) {
+        msg = 'Driver profile not found yet. Please complete driver registration first.';
+      }
       showSnack(context, msg, error: true);
       _otpCtrl.clear();
     } finally {
@@ -99,7 +98,7 @@ class _OtpScreenState extends State<OtpScreen> {
   Future<void> _resend() async {
     if (_seconds > 0) return;
     try {
-      await PhoneAuthService.instance.sendOtp(widget.phone);
+      await _api.sendOtp(widget.phone);
       if (!mounted) return;
       showSnack(context, 'OTP resent!');
       _startTimer();

@@ -5,7 +5,9 @@ services:
     rootDir: backend
     buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /health
     plan: free
+    autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
@@ -23,6 +25,26 @@ services:
         value: 102030
       - key: ADMIN_SECRET_KEY
         value: your_admin_key
+      - key: CORS_ORIGINS
+        value: https://movezy-admin.onrender.com
+      - key: ENABLE_STRICT_BOOKING_POLICY
+        value: false
+      - key: ENABLE_IDEMPOTENCY_KEYS
+        value: false
+      - key: RATE_LIMIT_MAX
+        value: 150
+      - key: AUTH_RATE_LIMIT_MAX
+        value: 30
+      - key: BOOKING_ACTION_RATE_LIMIT_MAX
+        value: 50
+      - key: LOCATION_RATE_LIMIT_MAX
+        value: 120
+      - key: GOOGLE_MAPS_SERVER_API_KEY
+        value: your_google_maps_server_key
+      - key: ENABLE_AUDIT_LOGS
+        value: true
+      - key: ENABLE_REQUEST_LOGS
+        value: true
 
   - type: web
     name: movezy-admin
@@ -31,6 +53,7 @@ services:
     buildCommand: npm install && npm run build
     startCommand: npx serve -s build
     plan: free
+    autoDeploy: true
     envVars:
       - key: REACT_APP_API_URL
         value: https://movezy-backend.onrender.com/api

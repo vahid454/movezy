@@ -3,6 +3,7 @@ const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Driver = require('../models/Driver');
 const OTP = require('../models/OTP');
 
 // Helper: Generate OTP
@@ -115,6 +116,23 @@ router.post('/driver-verify-otp',
 
       const user = await User.findOne({ phone, role: 'driver' });
       if (!user) return res.status(404).json({ error: 'Driver account not found. Please register first.' });
+
+      const driverProfile = await Driver.findOne({ user: user._id }).select('approvalStatus rejectionReason');
+      if (!driverProfile) {
+        return res.status(404).json({ error: 'Driver profile not found. Please register again.' });
+      }
+      if (driverProfile.approvalStatus === 'pending') {
+        return res.status(403).json({
+          error: 'Thanks for registering. Your profile is under review. Please wait while our backend team processes your approval.',
+          approvalStatus: 'pending'
+        });
+      }
+      if (driverProfile.approvalStatus === 'rejected') {
+        return res.status(403).json({
+          error: `Your profile was not approved yet. Reason: ${driverProfile.rejectionReason || 'Documents need corrections'}. Please update and re-apply.`,
+          approvalStatus: 'rejected'
+        });
+      }
 
       if (fcmToken) { user.fcmToken = fcmToken; await user.save(); }
 

@@ -23,7 +23,7 @@
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>GMSApiKey</key>
-	<string>YOUR_IOS_GOOGLE_MAPS_API_KEY</string>
+	<string>AIzaSyAI-Yd7hKhz8LuhdWudYxvaWjshx3QyfBs</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

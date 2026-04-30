@@ -106,7 +106,7 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                     SizedBox(height: 6),
                     Text(
-                      'Transport, Simplified.',
+                      'Fast city transport',
                       style: TextStyle(
                           fontSize: 14,
                           color: AppColors.textSecondary,

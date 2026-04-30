@@ -6,6 +6,18 @@ const Driver = require('../models/Driver');
 const Booking = require('../models/Booking');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { sendPushNotification } = require('../utils/notifications');
+const { BOOKING_STATUSES, enforceTransitionOrBypass } = require('../utils/bookingPolicy');
+const { IDEMPOTENCY_ENABLED, getIdempotencyKey } = require('../utils/idempotency');
+const { logAuditEvent } = require('../utils/auditLogger');
+
+const VEHICLE_FARE_CONFIG = {
+  bike: { baseFare: 20, perKm: 8, minFare: 35 },
+  auto: { baseFare: 30, perKm: 12, minFare: 55 },
+  mini_truck: { baseFare: 80, perKm: 20, minFare: 140 },
+  tempo: { baseFare: 100, perKm: 30, minFare: 180 },
+  truck: { baseFare: 200, perKm: 50, minFare: 320 },
+  pickup: { baseFare: 120, perKm: 35, minFare: 220 }
+};
 
 // Haversine distance
 const getDistance = (lat1, lon1, lat2, lon2) => {
@@ -17,35 +29,134 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 const estimateFare = (distanceKm, vehicleType) => {
-  const rates = { bike: 8, auto: 12, mini_truck: 20, tempo: 30, truck: 50, pickup: 35 };
-  const base = { bike: 20, auto: 30, mini_truck: 80, tempo: 100, truck: 200, pickup: 120 };
-  return Math.round(base[vehicleType] + (rates[vehicleType] * distanceKm));
+  const fareConfig = VEHICLE_FARE_CONFIG[vehicleType];
+  if (!fareConfig) return null;
+
+  const distance = Math.max(0, distanceKm);
+  const baseDistanceFare = fareConfig.baseFare + (fareConfig.perKm * distance);
+  const longDistanceSurcharge = distance > 10 ? (distance - 10) * (fareConfig.perKm * 0.2) : 0;
+  const bookingFee = Number(process.env.BOOKING_PLATFORM_FEE || 10);
+  const currentHour = new Date().getHours();
+  const isPeakHour = (currentHour >= 8 && currentHour <= 11) || (currentHour >= 17 && currentHour <= 21);
+  const peakMultiplier = isPeakHour ? Number(process.env.PEAK_HOUR_MULTIPLIER || 1.2) : 1;
+
+  const grossFare = (baseDistanceFare + longDistanceSurcharge + bookingFee) * peakMultiplier;
+  return Math.round(Math.max(fareConfig.minFare, grossFare));
+};
+
+const toValidCoordinate = (value, min, max) => {
+  const parsedValue = Number(value);
+  if (!Number.isFinite(parsedValue) || parsedValue < min || parsedValue > max) {
+    return null;
+  }
+  return parsedValue;
+};
+
+const normalizeLocation = (location) => {
+  if (!location || typeof location !== 'object') return null;
+
+  const latitude = toValidCoordinate(location.latitude, -90, 90);
+  const longitude = toValidCoordinate(location.longitude, -180, 180);
+  const address = typeof location.address === 'string' ? location.address.trim() : '';
+  if (latitude === null || longitude === null || !address) return null;
+
+  return { latitude, longitude, address };
 };
 
 // POST /api/customer/create-booking
 router.post('/create-booking', authenticate, requireRole('customer'), async (req, res) => {
   try {
     const { vehicleType, pickup, dropoff, description } = req.body;
+    const idempotencyKey = IDEMPOTENCY_ENABLED ? getIdempotencyKey(req) : null;
     if (!vehicleType || !pickup || !dropoff) return res.status(400).json({ error: 'Missing required fields' });
+    if (!Object.prototype.hasOwnProperty.call(VEHICLE_FARE_CONFIG, vehicleType)) {
+      return res.status(400).json({ error: 'Unsupported vehicle type' });
+    }
 
-    const distanceKm = getDistance(pickup.latitude, pickup.longitude, dropoff.latitude, dropoff.longitude);
+    const normalizedPickup = normalizeLocation(pickup);
+    const normalizedDropoff = normalizeLocation(dropoff);
+    if (!normalizedPickup || !normalizedDropoff) {
+      return res.status(400).json({ error: 'Invalid pickup or dropoff coordinates' });
+    }
+
+    const distanceKm = getDistance(
+      normalizedPickup.latitude,
+      normalizedPickup.longitude,
+      normalizedDropoff.latitude,
+      normalizedDropoff.longitude
+    );
     const estimatedFare = estimateFare(distanceKm, vehicleType);
+    if (estimatedFare === null) return res.status(400).json({ error: 'Unable to estimate fare' });
 
-    const booking = await Booking.create({
-      bookingId: `MV${Date.now()}`,
-      customer: req.userId,
-      vehicleType,
-      pickup: {
-        address: pickup.address,
-        location: { type: 'Point', coordinates: [pickup.longitude, pickup.latitude] }
-      },
-      dropoff: {
-        address: dropoff.address,
-        location: { type: 'Point', coordinates: [dropoff.longitude, dropoff.latitude] }
-      },
-      description,
-      estimatedDistance: Math.round(distanceKm * 10) / 10,
-      estimatedFare
+    if (IDEMPOTENCY_ENABLED && idempotencyKey) {
+      const existingBooking = await Booking.findOne({
+        customer: req.userId,
+        createBookingIdempotencyKey: idempotencyKey
+      });
+      if (existingBooking) {
+        return res.status(200).json({
+          success: true,
+          booking: {
+            id: existingBooking._id,
+            bookingId: existingBooking.bookingId,
+            status: existingBooking.status,
+            estimatedFare: existingBooking.estimatedFare,
+            estimatedDistance: existingBooking.estimatedDistance,
+            nearbyDriversCount: existingBooking.notifiedDrivers?.length || 0
+          },
+          idempotentReplay: true
+        });
+      }
+    }
+
+    let booking;
+    try {
+      booking = await Booking.create({
+        bookingId: `MV${Date.now()}`,
+        customer: req.userId,
+        vehicleType,
+        pickup: {
+          address: normalizedPickup.address,
+          location: { type: 'Point', coordinates: [normalizedPickup.longitude, normalizedPickup.latitude] }
+        },
+        dropoff: {
+          address: normalizedDropoff.address,
+          location: { type: 'Point', coordinates: [normalizedDropoff.longitude, normalizedDropoff.latitude] }
+        },
+        description,
+        estimatedDistance: Math.round(distanceKm * 10) / 10,
+        estimatedFare,
+        createBookingIdempotencyKey: idempotencyKey || undefined
+      });
+    } catch (createError) {
+      if (IDEMPOTENCY_ENABLED && idempotencyKey && createError?.code === 11000) {
+        const replayBooking = await Booking.findOne({
+          customer: req.userId,
+          createBookingIdempotencyKey: idempotencyKey
+        });
+        if (replayBooking) {
+          return res.status(200).json({
+            success: true,
+            booking: {
+              id: replayBooking._id,
+              bookingId: replayBooking.bookingId,
+              status: replayBooking.status,
+              estimatedFare: replayBooking.estimatedFare,
+              estimatedDistance: replayBooking.estimatedDistance,
+              nearbyDriversCount: replayBooking.notifiedDrivers?.length || 0
+            },
+            idempotentReplay: true
+          });
+        }
+      }
+      throw createError;
+    }
+    logAuditEvent({
+      req,
+      action: 'create_booking',
+      entityType: 'booking',
+      entityId: booking._id,
+      metadata: { vehicleType, estimatedFare }
     });
 
     // Find nearby drivers
@@ -55,7 +166,7 @@ router.post('/create-booking', authenticate, requireRole('customer'), async (req
       isAvailable: true,
       location: {
         $near: {
-          $geometry: { type: 'Point', coordinates: [pickup.longitude, pickup.latitude] },
+          $geometry: { type: 'Point', coordinates: [normalizedPickup.longitude, normalizedPickup.latitude] },
           $maxDistance: 5000
         }
       }
@@ -68,7 +179,7 @@ router.post('/create-booking', authenticate, requireRole('customer'), async (req
     for (const driver of nearbyDrivers) {
       if (driver.user?.fcmToken) {
         await sendPushNotification(driver.user.fcmToken, 'New Request Nearby! 📦',
-          `${vehicleType.toUpperCase()} needed: ${pickup.address} → ${dropoff.address}`,
+          `${vehicleType.toUpperCase()} needed: ${normalizedPickup.address} → ${normalizedDropoff.address}`,
           { bookingId: booking._id.toString(), type: 'new_booking' }
         );
       }
@@ -77,8 +188,8 @@ router.post('/create-booking', authenticate, requireRole('customer'), async (req
           bookingId: booking._id,
           bookingCode: booking.bookingId,
           vehicleType,
-          pickup: { address: pickup.address, latitude: pickup.latitude, longitude: pickup.longitude },
-          dropoff: { address: dropoff.address, latitude: dropoff.latitude, longitude: dropoff.longitude },
+          pickup: normalizedPickup,
+          dropoff: normalizedDropoff,
           description,
           estimatedDistance: booking.estimatedDistance,
           estimatedFare
@@ -128,14 +239,26 @@ router.post('/cancel-booking', authenticate, requireRole('customer'), async (req
     if (!booking || booking.customer.toString() !== req.userId.toString()) {
       return res.status(404).json({ error: 'Booking not found' });
     }
-    if (['completed', 'cancelled'].includes(booking.status)) {
+    if ([BOOKING_STATUSES.COMPLETED, BOOKING_STATUSES.CANCELLED].includes(booking.status)) {
       return res.status(400).json({ error: 'Cannot cancel this booking' });
     }
 
-    booking.status = 'cancelled';
+    const transitionGuard = enforceTransitionOrBypass(booking.status, BOOKING_STATUSES.CANCELLED);
+    if (!transitionGuard.allowed) {
+      return res.status(400).json({ error: transitionGuard.message });
+    }
+
+    booking.status = BOOKING_STATUSES.CANCELLED;
     booking.cancelledBy = 'customer';
     booking.cancellationReason = reason || 'Customer cancelled';
     await booking.save();
+    logAuditEvent({
+      req,
+      action: 'cancel_booking',
+      entityType: 'booking',
+      entityId: booking._id,
+      metadata: { cancelledBy: 'customer', reason: booking.cancellationReason }
+    });
 
     if (booking.driver) {
       const driver = await Driver.findById(booking.driver);
@@ -207,8 +330,14 @@ router.get('/active-booking', authenticate, requireRole('customer'), async (req,
 router.put('/update-location', authenticate, async (req, res) => {
   try {
     const { latitude, longitude } = req.body;
+    const parsedLatitude = toValidCoordinate(latitude, -90, 90);
+    const parsedLongitude = toValidCoordinate(longitude, -180, 180);
+    if (parsedLatitude === null || parsedLongitude === null) {
+      return res.status(400).json({ error: 'Valid latitude and longitude are required' });
+    }
+
     await User.findByIdAndUpdate(req.userId, {
-      location: { type: 'Point', coordinates: [parseFloat(longitude), parseFloat(latitude)] },
+      location: { type: 'Point', coordinates: [parsedLongitude, parsedLatitude] },
       lastSeen: new Date()
     });
     res.json({ success: true });
@@ -221,13 +350,22 @@ router.put('/update-location', authenticate, async (req, res) => {
 router.get('/nearby-drivers', authenticate, requireRole('customer'), async (req, res) => {
   try {
     const { latitude, longitude, vehicleType } = req.query;
+    const parsedLatitude = toValidCoordinate(latitude, -90, 90);
+    const parsedLongitude = toValidCoordinate(longitude, -180, 180);
+    if (parsedLatitude === null || parsedLongitude === null) {
+      return res.status(400).json({ error: 'Valid latitude and longitude are required' });
+    }
+    if (vehicleType && !Object.prototype.hasOwnProperty.call(VEHICLE_FARE_CONFIG, vehicleType)) {
+      return res.status(400).json({ error: 'Unsupported vehicle type' });
+    }
+
     const query = {
       approvalStatus: 'approved',
       isOnline: true,
       isAvailable: true,
       location: {
         $near: {
-          $geometry: { type: 'Point', coordinates: [parseFloat(longitude), parseFloat(latitude)] },
+          $geometry: { type: 'Point', coordinates: [parsedLongitude, parsedLatitude] },
           $maxDistance: 8000
         }
       }

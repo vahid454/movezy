@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:movezy/core/constants/app_constants.dart';
 import 'package:movezy/core/theme/app_theme.dart';
 import 'package:movezy/core/widgets/widgets.dart';
-import 'package:movezy/data/models/models.dart';
-import 'package:movezy/services/phone_auth_service.dart';
+import 'package:movezy/data/datasources/api_service.dart';
 import 'package:movezy/services/session_manager.dart';
 
 enum _Mode { customer, driver }
@@ -24,6 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _nameCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _loading = false;
+  final _api = ApiService();
 
   @override
   void dispose() {
@@ -35,50 +34,22 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _sendOtp() async {
     if (!_formKey.currentState!.validate()) return;
     final phone = '+91${_phoneCtrl.text.trim()}';
-    if (_mode == _Mode.driver &&
-        !SessionManager.instance.isDriverPhoneRegistered(phone)) {
-      showSnack(
-        context,
-        'Register this phone as a driver first, then use driver login.',
-        error: true,
-      );
-      return;
-    }
     setState(() => _loading = true);
     try {
-      final res = await PhoneAuthService.instance.sendOtp(phone);
+      final res = await _api.sendOtp(phone);
       if (!mounted) return;
-      if (res.requiresCode) {
-        context.push(AppRoutes.otpVerify, extra: {
-          'phone': phone,
-          'name': _mode == _Mode.customer ? _nameCtrl.text.trim() : null,
-          'isDriver': _mode == _Mode.driver,
-        });
+      if (res['success'] != true) {
+        showSnack(context, 'Could not send OTP. Try again.', error: true);
         return;
       }
-
-      final firebaseUser = res.credential?.user;
-      if (firebaseUser == null) {
-        showSnack(context, 'Failed to complete phone verification',
-            error: true);
-        return;
-      }
-
-      final token = await firebaseUser.getIdToken();
-      final user = UserModel(
-        id: firebaseUser.uid,
-        name: _mode == _Mode.customer ? _nameCtrl.text.trim() : 'Driver',
-        phone: phone,
-        role: _mode == _Mode.driver ? 'driver' : 'customer',
-      );
-      await SessionManager.instance.saveSession(token ?? '', user);
+      context.push(AppRoutes.otpVerify, extra: {
+        'phone': phone,
+        'name': _mode == _Mode.customer ? _nameCtrl.text.trim() : null,
+        'isDriver': _mode == _Mode.driver,
+      });
+    } catch (e) {
       if (!mounted) return;
-      context.go(
-        user.isDriver ? AppRoutes.driverHome : AppRoutes.customerHome,
-      );
-    } on FirebaseAuthException catch (e) {
-      if (!mounted) return;
-      final msg = e.message ?? 'Failed to send OTP';
+      final msg = e.toString().replaceFirst('Exception: ', '');
       showSnack(context, msg, error: true);
     } finally {
       if (mounted) setState(() => _loading = false);

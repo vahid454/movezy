@@ -24,6 +24,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   Position? _pos;
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
+  List<LatLng> _tripRoutePath = const [];
+  String? _tripRouteKey;
   DriverProfile? _profile;
   BookingModel? _activeBooking;
   bool _isOnline = false;
@@ -89,6 +91,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           _customerLatLng = active?.hasCustomerLiveLocation == true
               ? LatLng(active!.customerLatitude!, active.customerLongitude!)
               : null;
+          if (active == null) {
+            _tripRoutePath = const [];
+            _tripRouteKey = null;
+          }
         });
         if (active != null) {
           SocketService.instance.joinBooking(active.id);
@@ -166,6 +172,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         _activeBooking = null;
         _customerPhone = null;
         _customerLatLng = null;
+        _tripRoutePath = const [];
+        _tripRouteKey = null;
       });
       _refreshMapOverlay(fitCamera: true);
       showSnack(context, 'Customer cancelled the booking', error: true);
@@ -241,10 +249,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     }
 
     if (pickupLatLng != null && dropLatLng != null) {
+      _ensureTripRoutePath(pickupLatLng, dropLatLng);
       nextPolylines.add(
         Polyline(
           polylineId: const PolylineId('trip-route'),
-          points: [pickupLatLng, dropLatLng],
+          points: _tripRoutePath.length >= 2 ? _tripRoutePath : [pickupLatLng, dropLatLng],
           width: 5,
           color: AppColors.primary,
           geodesic: true,
@@ -296,6 +305,34 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         if (dropLatLng != null) dropLatLng,
         if (_customerLatLng != null) _customerLatLng!,
       ]);
+    }
+  }
+
+  Future<void> _ensureTripRoutePath(LatLng start, LatLng end) async {
+    final routeKey = '${start.latitude.toStringAsFixed(5)},${start.longitude.toStringAsFixed(5)}:${end.latitude.toStringAsFixed(5)},${end.longitude.toStringAsFixed(5)}';
+    if (_tripRouteKey == routeKey && _tripRoutePath.isNotEmpty) return;
+
+    _tripRouteKey = routeKey;
+    try {
+      final routeCoordinates = await _api.getRoutePath(
+        originLat: start.latitude,
+        originLng: start.longitude,
+        destinationLat: end.latitude,
+        destinationLng: end.longitude,
+      );
+      if (!mounted || _tripRouteKey != routeKey) return;
+
+      final routePath = routeCoordinates
+          .map((coordinate) => LatLng(coordinate[0], coordinate[1]))
+          .toList();
+      setState(() {
+        _tripRoutePath = routePath.length >= 2 ? routePath : const [];
+      });
+    } catch (_) {
+      if (!mounted || _tripRouteKey != routeKey) return;
+      setState(() {
+        _tripRoutePath = const [];
+      });
     }
   }
 
@@ -475,6 +512,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       setState(() {
         _activeBooking = null;
         _customerPhone = null;
+        _tripRoutePath = const [];
+        _tripRouteKey = null;
       });
       _refreshMapOverlay(fitCamera: true);
       showSnack(context, '✅ Trip completed!');
@@ -692,14 +731,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         title: 'Location access is needed',
         subtitle: _locationNotice!,
         accent: AppColors.warning,
-      );
-    }
-    if (AppConstants.usesEmulatorLoopback) {
-      return InlineNoticeCard(
-        icon: Icons.wifi_tethering_error_rounded,
-        title: 'Backend is still pointing to emulator mode',
-        subtitle: AppConstants.localBackendHint,
-        accent: AppColors.info,
       );
     }
     if (_activeBooking == null && _isOnline) {

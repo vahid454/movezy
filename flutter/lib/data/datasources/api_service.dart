@@ -227,4 +227,30 @@ class ApiService {
         .map((e) => NearbyDriver.fromJson(e as Map<String, dynamic>))
         .toList();
   }
+
+  Future<List<List<double>>> getRoutePath({
+    required double originLat,
+    required double originLng,
+    required double destinationLat,
+    required double destinationLng,
+  }) async {
+    final r = await _dio.get('/booking/route-path', queryParameters: {
+      'originLat': originLat,
+      'originLng': originLng,
+      'destinationLat': destinationLat,
+      'destinationLng': destinationLng,
+    });
+    final data = r.data as Map<String, dynamic>;
+    final coordinates = data['coordinates'] as List? ?? const [];
+    return coordinates
+        .whereType<List>()
+        .map((coord) {
+          final longitude = (coord.isNotEmpty ? coord[0] : null) as num?;
+          final latitude = (coord.length > 1 ? coord[1] : null) as num?;
+          if (longitude == null || latitude == null) return <double>[];
+          return <double>[latitude.toDouble(), longitude.toDouble()];
+        })
+        .where((coord) => coord.length == 2)
+        .toList();
+  }
 }

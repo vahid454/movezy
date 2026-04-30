@@ -8,6 +8,17 @@ const Driver = require('../models/Driver');
 const Booking = require('../models/Booking');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { sendPushNotification } = require('../utils/notifications');
+const { BOOKING_STATUSES, enforceTransitionOrBypass } = require('../utils/bookingPolicy');
+const { IDEMPOTENCY_ENABLED, getIdempotencyKey } = require('../utils/idempotency');
+const { logAuditEvent } = require('../utils/auditLogger');
+
+const toValidCoordinate = (value, min, max) => {
+  const parsedValue = Number(value);
+  if (!Number.isFinite(parsedValue) || parsedValue < min || parsedValue > max) {
+    return null;
+  }
+  return parsedValue;
+};
 
 // Multer config
 const storage = multer.diskStorage({
@@ -105,23 +116,27 @@ router.put('/toggle-online', authenticate, requireRole('driver'), async (req, re
 router.put('/update-location', authenticate, requireRole('driver'), async (req, res) => {
   try {
     const { latitude, longitude } = req.body;
-    if (!latitude || !longitude) return res.status(400).json({ error: 'Location required' });
+    const parsedLatitude = toValidCoordinate(latitude, -90, 90);
+    const parsedLongitude = toValidCoordinate(longitude, -180, 180);
+    if (parsedLatitude === null || parsedLongitude === null) {
+      return res.status(400).json({ error: 'Valid latitude and longitude are required' });
+    }
 
     const driver = await Driver.findOneAndUpdate(
       { user: req.userId },
-      { location: { type: 'Point', coordinates: [parseFloat(longitude), parseFloat(latitude)] } },
+      { location: { type: 'Point', coordinates: [parsedLongitude, parsedLatitude] } },
       { new: true }
     );
 
     await User.findByIdAndUpdate(req.userId, {
-      location: { type: 'Point', coordinates: [parseFloat(longitude), parseFloat(latitude)] },
+      location: { type: 'Point', coordinates: [parsedLongitude, parsedLatitude] },
       lastSeen: new Date()
     });
 
     if (req.io) {
       req.io.emit('driver_location_update', {
         driverId: driver._id,
-        location: { latitude, longitude }
+        location: { latitude: parsedLatitude, longitude: parsedLongitude }
       });
     }
 
@@ -135,11 +150,23 @@ router.put('/update-location', authenticate, requireRole('driver'), async (req, 
 router.post('/respond-booking', authenticate, requireRole('driver'), async (req, res) => {
   try {
     const { bookingId, action } = req.body; // action: 'accept' | 'reject'
+    const idempotencyKey = IDEMPOTENCY_ENABLED ? getIdempotencyKey(req) : null;
     const driver = await Driver.findOne({ user: req.userId });
     if (!driver || driver.approvalStatus !== 'approved') return res.status(403).json({ error: 'Not authorized' });
 
     const booking = await Booking.findById(bookingId).populate('customer', 'name phone fcmToken');
-    if (!booking || booking.status !== 'searching') return res.status(404).json({ error: 'Booking not available' });
+    if (!booking) return res.status(404).json({ error: 'Booking not available' });
+    if (
+      IDEMPOTENCY_ENABLED
+      && idempotencyKey
+      && booking.acceptedByDriverRequestId === idempotencyKey
+      && booking.driver
+      && booking.driver.toString() === driver._id.toString()
+      && booking.status === BOOKING_STATUSES.ACCEPTED
+    ) {
+      return res.status(200).json({ success: true, message: 'Booking already accepted', booking, idempotentReplay: true });
+    }
+    if (booking.status !== BOOKING_STATUSES.SEARCHING) return res.status(404).json({ error: 'Booking not available' });
 
     if (action === 'reject') {
       booking.rejectedByDrivers.push(driver._id);
@@ -149,9 +176,22 @@ router.post('/respond-booking', authenticate, requireRole('driver'), async (req,
 
     // Accept
     booking.driver = driver._id;
-    booking.status = 'accepted';
+    const transitionGuard = enforceTransitionOrBypass(booking.status, BOOKING_STATUSES.ACCEPTED);
+    if (!transitionGuard.allowed) {
+      return res.status(400).json({ error: transitionGuard.message });
+    }
+
+    booking.status = BOOKING_STATUSES.ACCEPTED;
     booking.acceptedAt = new Date();
+    booking.acceptedByDriverRequestId = idempotencyKey || undefined;
     await booking.save();
+    logAuditEvent({
+      req,
+      action: 'accept_booking',
+      entityType: 'booking',
+      entityId: booking._id,
+      metadata: { driverId: driver._id }
+    });
 
     driver.isAvailable = false;
     await driver.save();
@@ -185,9 +225,21 @@ router.post('/start-trip', authenticate, requireRole('driver'), async (req, res)
       return res.status(403).json({ error: 'Not authorized' });
     }
 
-    booking.status = 'in_progress';
+    const transitionGuard = enforceTransitionOrBypass(booking.status, BOOKING_STATUSES.IN_PROGRESS);
+    if (!transitionGuard.allowed) {
+      return res.status(400).json({ error: transitionGuard.message });
+    }
+
+    booking.status = BOOKING_STATUSES.IN_PROGRESS;
     booking.startedAt = new Date();
     await booking.save();
+    logAuditEvent({
+      req,
+      action: 'start_trip',
+      entityType: 'booking',
+      entityId: booking._id,
+      metadata: { driverId: driver._id }
+    });
 
     if (booking.customer?.fcmToken) {
       await sendPushNotification(booking.customer.fcmToken, 'Trip Started! 🚀', 'Your goods are on the way', { bookingId: booking._id.toString() });
@@ -214,9 +266,21 @@ router.post('/complete-trip', authenticate, requireRole('driver'), async (req, r
       return res.status(403).json({ error: 'Not authorized' });
     }
 
-    booking.status = 'completed';
+    const transitionGuard = enforceTransitionOrBypass(booking.status, BOOKING_STATUSES.COMPLETED);
+    if (!transitionGuard.allowed) {
+      return res.status(400).json({ error: transitionGuard.message });
+    }
+
+    booking.status = BOOKING_STATUSES.COMPLETED;
     booking.completedAt = new Date();
     await booking.save();
+    logAuditEvent({
+      req,
+      action: 'complete_trip',
+      entityType: 'booking',
+      entityId: booking._id,
+      metadata: { driverId: driver._id }
+    });
 
     driver.isAvailable = true;
     driver.totalTrips += 1;

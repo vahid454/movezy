@@ -13,7 +13,7 @@ const PrivateRoute = ({ children }) => {
   return token ? children : <Navigate to="/login" replace />;
 };
 
-const Sidebar = ({ onLogout }) => {
+const Sidebar = ({ onLogout, theme, onToggleTheme }) => {
   const navItems = [
     { to: '/', label: 'Dashboard', icon: '📊' },
     { to: '/drivers', label: 'Drivers', icon: '🚗' },
@@ -36,6 +36,10 @@ const Sidebar = ({ onLogout }) => {
           </NavLink>
         ))}
       </nav>
+      <button className="theme-btn" onClick={onToggleTheme} type="button">
+        <span>{theme === 'light' ? '🌙' : '☀️'}</span>
+        {theme === 'light' ? 'Dark mode' : 'Light mode'}
+      </button>
       <button className="logout-btn" onClick={onLogout}>
         <span>🚪</span> Logout
       </button>
@@ -43,7 +47,7 @@ const Sidebar = ({ onLogout }) => {
   );
 };
 
-const Layout = ({ children }) => {
+const Layout = ({ children, theme, onToggleTheme }) => {
   const navigate = useNavigate();
   const handleLogout = () => {
     localStorage.removeItem('adminToken');
@@ -51,20 +55,40 @@ const Layout = ({ children }) => {
   };
   return (
     <div className="app-layout">
-      <Sidebar onLogout={handleLogout} />
-      <main className="main-content">{children}</main>
+      <Sidebar onLogout={handleLogout} theme={theme} onToggleTheme={onToggleTheme} />
+      <main className="main-content">
+        <div className="topbar">
+          <div>
+            <div className="topbar-title">Operations Console</div>
+            <div className="topbar-subtitle">Movezy live dispatch and booking control</div>
+          </div>
+          <div className="topbar-theme">{theme === 'light' ? 'Light' : 'Dark'} mode</div>
+        </div>
+        <div className="content-shell">{children}</div>
+      </main>
     </div>
   );
 };
 
 export default function App() {
+  const [theme, setTheme] = useState(() => localStorage.getItem('adminTheme') || 'light');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('adminTheme', theme);
+  }, [theme]);
+
+  const handleToggleTheme = () => {
+    setTheme((currentTheme) => (currentTheme === 'light' ? 'dark' : 'light'));
+  };
+
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/*" element={
           <PrivateRoute>
-            <Layout>
+            <Layout theme={theme} onToggleTheme={handleToggleTheme}>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/drivers" element={<Drivers />} />

@@ -4,7 +4,6 @@ const socketIo = require('socket.io');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
 require('dotenv').config();
 
@@ -14,27 +13,44 @@ const driverRoutes = require('./src/routes/driver');
 const bookingRoutes = require('./src/routes/booking');
 const adminRoutes = require('./src/routes/admin');
 const { setupSocketHandlers } = require('./src/utils/socketHandler');
+const { attachRequestContext } = require('./src/middleware/requestContext');
+const {
+  createApiLimiter,
+  createAuthLimiter,
+  createBookingActionLimiter,
+  createLocationUpdateLimiter
+} = require('./src/middleware/rateLimits');
 
 const app = express();
 const server = http.createServer(app);
+const corsOrigins = (process.env.CORS_ORIGINS || '').split(',').map((origin) => origin.trim()).filter(Boolean);
 const io = socketIo(server, {
-  cors: { origin: '*', methods: ['GET', 'POST'] }
+  cors: {
+    origin: corsOrigins.length ? corsOrigins : '*',
+    methods: ['GET', 'POST', 'PUT', 'PATCH'],
+    credentials: true
+  }
 });
 
 // Middleware
 app.use(helmet());
-app.use(cors());
+app.set('trust proxy', 1);
+app.use(cors({
+  origin: corsOrigins.length ? corsOrigins : '*',
+  credentials: true
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('combined'));
+app.use(attachRequestContext);
 
 // Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: { error: 'Too many requests, please try again later.' }
-});
-app.use('/api/', limiter);
+app.use('/api/', createApiLimiter());
+app.use('/api/auth', createAuthLimiter());
+app.use('/api/customer/create-booking', createBookingActionLimiter());
+app.use('/api/driver/respond-booking', createBookingActionLimiter());
+app.use('/api/customer/update-location', createLocationUpdateLimiter());
+app.use('/api/driver/update-location', createLocationUpdateLimiter());
 
 // Make io accessible to routes
 app.use((req, res, next) => {
@@ -58,14 +74,6 @@ app.get('/health', (req, res) => res.json({ status: 'OK', timestamp: new Date() 
 // Socket.io setup
 setupSocketHandlers(io);
 
-// MongoDB connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/movezy', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-}).then(() => {
-  console.log('✅ MongoDB connected');
-}).catch(err => console.error('❌ MongoDB error:', err));
-
 // Error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -73,8 +81,30 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 Movezy Server running on port ${PORT}`);
-});
+const startServer = async () => {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/movezy');
+    console.log('✅ MongoDB connected');
+    server.listen(PORT, () => {
+      console.log(`🚀 Movezy Server running on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error('❌ MongoDB error:', err);
+    process.exit(1);
+  }
+};
+
+const gracefulShutdown = async (signal) => {
+  console.log(`Received ${signal}. Starting graceful shutdown...`);
+  server.close(async () => {
+    await mongoose.connection.close();
+    process.exit(0);
+  });
+};
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+startServer();
 
 module.exports = { app, io };

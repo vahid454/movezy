@@ -44,6 +44,30 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(children: [
+        Positioned(
+          top: -120,
+          left: -80,
+          child: Container(
+            width: 260,
+            height: 260,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.primaryGlow.withValues(alpha: 0.35),
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 180,
+          right: -80,
+          child: Container(
+            width: 220,
+            height: 220,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.infoBg.withValues(alpha: 0.45),
+            ),
+          ),
+        ),
         PageView.builder(
           controller: _ctrl,
           itemCount: _pages.length,
@@ -55,9 +79,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(p.emoji,
-                      style: const TextStyle(fontSize: 80)),
-                  const SizedBox(height: 40),
+                  Container(
+                    width: 110,
+                    height: 110,
+                    decoration: BoxDecoration(
+                      color: AppColors.surface2,
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Center(child: Text(p.emoji, style: const TextStyle(fontSize: 54))),
+                  ),
+                  const SizedBox(height: 30),
                   Text(
                     p.title,
                     textAlign: TextAlign.center,
@@ -77,6 +109,32 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       fontSize: 16,
                       color: AppColors.textSecondary,
                       height: 1.6,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.verified_user_outlined, color: AppColors.success, size: 18),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Verified drivers, live route tracking, and transparent fare estimates.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],

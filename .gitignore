@@ -1,0 +1,3 @@
+admin-panel/build/
+admin-panel/node_modules/.cache/
+backend/node_modules/fsevents/

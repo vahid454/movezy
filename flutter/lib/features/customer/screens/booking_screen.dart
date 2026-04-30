@@ -20,6 +20,8 @@ class BookingScreen extends StatefulWidget {
   State<BookingScreen> createState() => _BookingScreenState();
 }
 
+enum _PinSelectionMode { pickup, dropoff }
+
 class _BookingScreenState extends State<BookingScreen> {
   final _pickupCtrl = TextEditingController();
   final _dropCtrl = TextEditingController();
@@ -27,6 +29,8 @@ class _BookingScreenState extends State<BookingScreen> {
   GoogleMapController? _mapCtrl;
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
+  List<LatLng> _roadRoutePath = const [];
+  String? _routeKey;
   double _pickupLat = 0, _pickupLng = 0;
   double _dropLat = 0, _dropLng = 0;
   VehicleOption _selected = kVehicles[1]; // default: auto
@@ -37,6 +41,7 @@ class _BookingScreenState extends State<BookingScreen> {
   List<NearbyDriver> _nearbyDrivers = const [];
   Timer? _dropDebounce;
   final _api = ApiService();
+  _PinSelectionMode _pinMode = _PinSelectionMode.dropoff;
 
   @override
   void initState() {
@@ -81,6 +86,7 @@ class _BookingScreenState extends State<BookingScreen> {
               ? addr
               : '${pos.latitude.toStringAsFixed(5)}, '
                   '${pos.longitude.toStringAsFixed(5)}';
+          _pinMode = _PinSelectionMode.dropoff;
         });
         _refreshMapPreview(fitCamera: true);
         _loadNearbyDrivers();
@@ -97,6 +103,8 @@ class _BookingScreenState extends State<BookingScreen> {
           _dropLng = 0;
           _distanceKm = null;
           _dropLookupMessage = null;
+          _roadRoutePath = const [];
+          _routeKey = null;
         });
         _refreshMapPreview();
       }
@@ -150,6 +158,8 @@ class _BookingScreenState extends State<BookingScreen> {
       _dropLat = 0;
       _dropLng = 0;
       _distanceKm = null;
+        _roadRoutePath = const [];
+        _routeKey = null;
     });
     _refreshMapPreview();
     _dropDebounce = Timer(const Duration(milliseconds: 650), () {
@@ -176,6 +186,8 @@ class _BookingScreenState extends State<BookingScreen> {
             title: 'Pickup',
             snippet: _pickupCtrl.text.trim(),
           ),
+          draggable: true,
+          onDragEnd: (latLng) => _setPickupFromMap(latLng),
         ),
       );
     }
@@ -192,6 +204,8 @@ class _BookingScreenState extends State<BookingScreen> {
             title: 'Drop-off',
             snippet: _dropCtrl.text.trim(),
           ),
+          draggable: true,
+          onDragEnd: (latLng) => _setDropFromMap(latLng),
         ),
       );
     }
@@ -204,11 +218,9 @@ class _BookingScreenState extends State<BookingScreen> {
         Marker(
           markerId: MarkerId('nearby_${driver.id}'),
           position: LatLng(lat, lng),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueOrange,
-          ),
+          icon: BitmapDescriptor.defaultMarkerWithHue(_markerHueForVehicle(driver.vehicleType)),
           infoWindow: InfoWindow(
-            title: driver.name.isNotEmpty ? driver.name : 'Nearby driver',
+            title: '${_vehicleEmoji(driver.vehicleType)} ${driver.name.isNotEmpty ? driver.name : 'Nearby driver'}',
             snippet:
                 '${driver.vehicleNumber} · ${driver.rating.toStringAsFixed(1)}★',
           ),
@@ -217,13 +229,17 @@ class _BookingScreenState extends State<BookingScreen> {
     }
 
     if (pickupReady && dropReady) {
+      _ensureRoadRoutePath();
+      final routePoints = _roadRoutePath.length >= 2
+          ? _roadRoutePath
+          : [
+              LatLng(_pickupLat, _pickupLng),
+              LatLng(_dropLat, _dropLng),
+            ];
       nextPolylines.add(
         Polyline(
           polylineId: const PolylineId('booking-route'),
-          points: [
-            LatLng(_pickupLat, _pickupLng),
-            LatLng(_dropLat, _dropLng),
-          ],
+          points: routePoints,
           width: 5,
           color: AppColors.primary,
           geodesic: true,
@@ -262,6 +278,108 @@ class _BookingScreenState extends State<BookingScreen> {
             .take(4)
             .map((driver) => LatLng(driver.latitude!, driver.longitude!)),
       ]);
+    }
+  }
+
+  void _onMapTapped(LatLng latLng) {
+    if (_pinMode == _PinSelectionMode.pickup) {
+      _setPickupFromMap(latLng);
+      return;
+    }
+    _setDropFromMap(latLng);
+  }
+
+  Future<void> _setPickupFromMap(LatLng latLng) async {
+    final address = await _reverseGeocode(latLng);
+    if (!mounted) return;
+    setState(() {
+      _pickupLat = latLng.latitude;
+      _pickupLng = latLng.longitude;
+      _pickupCtrl.text = address;
+    });
+    await _loadNearbyDrivers();
+    _refreshMapPreview(fitCamera: true);
+  }
+
+  Future<void> _setDropFromMap(LatLng latLng) async {
+    final address = await _reverseGeocode(latLng);
+    if (!mounted) return;
+    setState(() {
+      _dropLat = latLng.latitude;
+      _dropLng = latLng.longitude;
+      _dropCtrl.text = address;
+      _dropLookupMessage = null;
+    });
+    _refreshMapPreview(fitCamera: true);
+  }
+
+  Future<String> _reverseGeocode(LatLng latLng) async {
+    try {
+      final places = await placemarkFromCoordinates(latLng.latitude, latLng.longitude);
+      if (places.isEmpty) {
+        return '${latLng.latitude.toStringAsFixed(5)}, ${latLng.longitude.toStringAsFixed(5)}';
+      }
+      final place = places.first;
+      final address = [place.name, place.thoroughfare, place.subLocality, place.locality]
+          .where((part) => part?.trim().isNotEmpty == true)
+          .join(', ');
+      if (address.isNotEmpty) return address;
+    } catch (_) {}
+    return '${latLng.latitude.toStringAsFixed(5)}, ${latLng.longitude.toStringAsFixed(5)}';
+  }
+
+  String _vehicleEmoji(String vehicleType) {
+    final vehicle = vehicleByType(vehicleType);
+    return vehicle?.emoji ?? '🚘';
+  }
+
+  double _markerHueForVehicle(String vehicleType) {
+    switch (vehicleType) {
+      case 'bike':
+        return BitmapDescriptor.hueGreen;
+      case 'auto':
+        return BitmapDescriptor.hueAzure;
+      case 'mini_truck':
+        return BitmapDescriptor.hueOrange;
+      case 'tempo':
+        return BitmapDescriptor.hueViolet;
+      case 'truck':
+        return BitmapDescriptor.hueRed;
+      case 'pickup':
+        return BitmapDescriptor.hueYellow;
+      default:
+        return BitmapDescriptor.hueOrange;
+    }
+  }
+
+  Future<void> _ensureRoadRoutePath() async {
+    if (!(_pickupLat != 0 || _pickupLng != 0) || !(_dropLat != 0 || _dropLng != 0)) {
+      return;
+    }
+    final routeKey = '${_pickupLat.toStringAsFixed(5)},${_pickupLng.toStringAsFixed(5)}:${_dropLat.toStringAsFixed(5)},${_dropLng.toStringAsFixed(5)}';
+    if (_routeKey == routeKey && _roadRoutePath.isNotEmpty) return;
+
+    _routeKey = routeKey;
+    try {
+      final routeCoordinates = await _api.getRoutePath(
+        originLat: _pickupLat,
+        originLng: _pickupLng,
+        destinationLat: _dropLat,
+        destinationLng: _dropLng,
+      );
+      if (!mounted || _routeKey != routeKey) return;
+
+      final routePath = routeCoordinates
+          .map((coordinate) => LatLng(coordinate[0], coordinate[1]))
+          .toList();
+      setState(() {
+        _roadRoutePath = routePath.length >= 2 ? routePath : const [];
+      });
+    } catch (_) {
+      if (!mounted || _routeKey != routeKey) return;
+      setState(() {
+        _roadRoutePath = const [];
+      });
     }
   }
 
@@ -467,7 +585,7 @@ class _BookingScreenState extends State<BookingScreen> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(14),
                     child: SizedBox(
-                      height: 220,
+                      height: 300,
                       child: GoogleMap(
                         initialCameraPosition: CameraPosition(
                           target: LatLng(
@@ -480,9 +598,8 @@ class _BookingScreenState extends State<BookingScreen> {
                           _mapCtrl = controller;
                           _refreshMapPreview(fitCamera: true);
                         },
-                        style: SessionManager.instance.nightMapsEnabled.value
-                            ? _kMapStyle
-                            : null,
+                        style: null,
+                        onTap: _onMapTapped,
                         markers: _markers,
                         polylines: _polylines,
                         myLocationEnabled: _pickupLat != 0 || _pickupLng != 0,
@@ -493,6 +610,28 @@ class _BookingScreenState extends State<BookingScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _MapPinModeChip(
+                          selected: _pinMode == _PinSelectionMode.pickup,
+                          icon: Icons.trip_origin,
+                          label: 'Set pickup pin',
+                          onTap: () => setState(() => _pinMode = _PinSelectionMode.pickup),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _MapPinModeChip(
+                          selected: _pinMode == _PinSelectionMode.dropoff,
+                          icon: Icons.place_outlined,
+                          label: 'Set drop pin',
+                          onTap: () => setState(() => _pinMode = _PinSelectionMode.dropoff),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -557,61 +696,79 @@ class _BookingScreenState extends State<BookingScreen> {
                     ),
                   ]),
                   const SizedBox(height: 12),
-                  ...kVehicles.map(
-                    (v) => GestureDetector(
-                      onTap: () {
-                        setState(() => _selected = v);
-                        _loadNearbyDrivers();
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: _selected.type == v.type
-                              ? Color(v.colorHex).withValues(alpha: 0.1)
-                              : AppColors.surface2,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: _selected.type == v.type
-                                ? Color(v.colorHex)
-                                : AppColors.border,
-                            width: _selected.type == v.type ? 1.5 : 1,
-                          ),
-                        ),
-                        child: Row(children: [
-                          Text(v.emoji, style: const TextStyle(fontSize: 24)),
-                          const SizedBox(width: 12),
-                          Expanded(
+                  SizedBox(
+                    height: 124,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: kVehicles.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 10),
+                      itemBuilder: (_, i) {
+                        final v = kVehicles[i];
+                        final isSelected = _selected.type == v.type;
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() => _selected = v);
+                            _loadNearbyDrivers();
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            width: 150,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? Color(v.colorHex).withValues(alpha: 0.12)
+                                  : AppColors.surface2,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: isSelected ? Color(v.colorHex) : AppColors.border,
+                                width: isSelected ? 1.6 : 1,
+                              ),
+                            ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
+                                Row(
+                                  children: [
+                                    Text(v.emoji, style: const TextStyle(fontSize: 22)),
+                                    const Spacer(),
+                                    if (isSelected)
+                                      Icon(Icons.check_circle, color: Color(v.colorHex), size: 16),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
                                 Text(v.name,
                                     style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.textPrimary,
-                                        fontSize: 15)),
-                                Text(v.desc,
-                                    style: const TextStyle(
-                                        fontSize: 12,
-                                        color: AppColors.textSecondary)),
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.textPrimary,
+                                      fontSize: 14,
+                                    )),
+                                const SizedBox(height: 3),
+                                Text(
+                                  v.desc,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                ),
+                                Text(
+                                  'Base ₹${v.baseFare}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
+                                    color: Color(v.colorHex),
+                                  ),
+                                ),
                               ],
                             ),
                           ),
-                          Text('₹${v.baseFare}+',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
-                                  color: Color(v.colorHex))),
-                          if (_selected.type == v.type) ...[
-                            const SizedBox(width: 8),
-                            Icon(Icons.check_circle,
-                                color: Color(v.colorHex), size: 18),
-                          ],
-                        ]),
-                      ),
+                        );
+                      },
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  _FareBreakupCard(
+                    selectedVehicle: _selected,
+                    distanceKm: _distanceKm,
                   ),
                 ],
               ),
@@ -768,3 +925,156 @@ const _kMapStyle = '''[
   {"featureType":"water","elementType":"geometry","stylers":[{"color":"#17263c"}]},
   {"featureType":"poi","elementType":"geometry","stylers":[{"color":"#0d0d0d"}]}
 ]''';
+
+class _MapPinModeChip extends StatelessWidget {
+  final bool selected;
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _MapPinModeChip({
+    required this.selected,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primaryGlow : AppColors.surface2,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.border,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 14, color: selected ? AppColors.primary : AppColors.textSecondary),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? AppColors.primary : AppColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FareBreakupCard extends StatelessWidget {
+  final VehicleOption selectedVehicle;
+  final double? distanceKm;
+
+  const _FareBreakupCard({
+    required this.selectedVehicle,
+    required this.distanceKm,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final distance = distanceKm ?? 0;
+    final baseDistanceFare = selectedVehicle.baseFare + (selectedVehicle.perKm * distance);
+    final longDistanceSurcharge = distance > 10 ? (distance - 10) * (selectedVehicle.perKm * 0.2) : 0;
+    final bookingFee = 10;
+    final currentHour = DateTime.now().hour;
+    final isPeakHour = (currentHour >= 8 && currentHour <= 11) || (currentHour >= 17 && currentHour <= 21);
+    final peakMultiplier = isPeakHour ? 1.2 : 1.0;
+    final subtotal = baseDistanceFare + longDistanceSurcharge + bookingFee;
+    final totalFare = (subtotal * peakMultiplier).round();
+    final finalEstimate = totalFare < selectedVehicle.minFare ? selectedVehicle.minFare : totalFare;
+
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface2,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+          iconColor: AppColors.primary,
+          collapsedIconColor: AppColors.textSecondary,
+          title: Text(
+            'Fare breakup (₹$finalEstimate)',
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          subtitle: Text(
+            distanceKm == null
+                ? 'Set drop pin for precise fare'
+                : '${distance.toStringAsFixed(1)} km · ${selectedVehicle.name}',
+            style: const TextStyle(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          children: [
+            _FareRow(label: 'Base fare', value: selectedVehicle.baseFare),
+            _FareRow(label: 'Distance charge', value: (selectedVehicle.perKm * distance).round()),
+            _FareRow(label: 'Long distance surcharge', value: longDistanceSurcharge.round()),
+            _FareRow(label: 'Platform fee', value: bookingFee),
+            _FareRow(label: isPeakHour ? 'Peak multiplier (1.2x)' : 'Peak multiplier (1.0x)', value: (subtotal * peakMultiplier).round()),
+            _FareRow(label: 'Minimum fare applied', value: selectedVehicle.minFare, muted: true),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FareRow extends StatelessWidget {
+  final String label;
+  final int value;
+  final bool muted;
+
+  const _FareRow({
+    required this.label,
+    required this.value,
+    this.muted = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: muted ? AppColors.textMuted : AppColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          Text(
+            '₹$value',
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

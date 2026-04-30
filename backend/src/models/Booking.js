@@ -48,12 +48,21 @@ const bookingSchema = new mongoose.Schema({
   driverRating: { type: Number, min: 1, max: 5 },
   searchRadius: { type: Number, default: 5000 }, // meters, increases over time
   notifiedDrivers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Driver' }],
-  rejectedByDrivers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Driver' }]
+  rejectedByDrivers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Driver' }],
+  createBookingIdempotencyKey: { type: String, trim: true },
+  acceptedByDriverRequestId: { type: String, trim: true }
 }, { timestamps: true });
 
 bookingSchema.index({ pickup: '2dsphere' });
 bookingSchema.index({ customer: 1, status: 1 });
 bookingSchema.index({ driver: 1, status: 1 });
 bookingSchema.index({ createdAt: -1 });
+bookingSchema.index(
+  { customer: 1, createBookingIdempotencyKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { createBookingIdempotencyKey: { $type: 'string' } }
+  }
+);
 
 module.exports = mongoose.model('Booking', bookingSchema);
