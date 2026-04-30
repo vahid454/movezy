@@ -41,6 +41,12 @@ services:
         value: 120
       - key: GOOGLE_MAPS_SERVER_API_KEY
         value: your_google_maps_server_key
+      - key: FIREBASE_PROJECT_ID
+        value: your_firebase_project_id
+      - key: FIREBASE_CLIENT_EMAIL
+        value: your_service_account_client_email
+      - key: FIREBASE_PRIVATE_KEY
+        value: "-----BEGIN PRIVATE KEY-----\\nYOUR_KEY_CONTENT\\n-----END PRIVATE KEY-----\\n"
       - key: ENABLE_AUDIT_LOGS
         value: true
       - key: ENABLE_REQUEST_LOGS

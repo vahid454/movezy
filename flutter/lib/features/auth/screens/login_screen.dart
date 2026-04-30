@@ -5,6 +5,8 @@ import 'package:movezy/core/constants/app_constants.dart';
 import 'package:movezy/core/theme/app_theme.dart';
 import 'package:movezy/core/widgets/widgets.dart';
 import 'package:movezy/data/datasources/api_service.dart';
+import 'package:movezy/data/models/models.dart';
+import 'package:movezy/services/phone_auth_service.dart';
 import 'package:movezy/services/session_manager.dart';
 
 enum _Mode { customer, driver }
@@ -36,10 +38,28 @@ class _LoginScreenState extends State<LoginScreen> {
     final phone = '+91${_phoneCtrl.text.trim()}';
     setState(() => _loading = true);
     try {
-      final res = await _api.sendOtp(phone);
+      final start = await PhoneAuthService.instance.sendOtp(phone);
       if (!mounted) return;
-      if (res['success'] != true) {
-        showSnack(context, 'Could not send OTP. Try again.', error: true);
+      if (!start.requiresCode && start.credential != null) {
+        final idToken = await start.credential!.user?.getIdToken();
+        if (idToken == null) {
+          throw Exception('Could not verify phone. Please try again.');
+        }
+        final res = await _api.exchangeFirebaseToken(
+          idToken: idToken,
+          isDriver: _mode == _Mode.driver,
+          name: _mode == _Mode.customer ? _nameCtrl.text.trim() : null,
+          fcmToken: SessionManager.instance.getFcmToken(),
+        );
+        final token = (res['token'] ?? '').toString();
+        final userJson = (res['user'] as Map?)?.cast<String, dynamic>() ?? {};
+        if (token.isEmpty || userJson.isEmpty) {
+          throw Exception('Login failed. Please try again.');
+        }
+        final user = UserModel.fromJson(userJson);
+        await SessionManager.instance.saveSession(token, user);
+        if (!mounted) return;
+        context.go(user.isDriver ? AppRoutes.driverHome : AppRoutes.customerHome);
         return;
       }
       context.push(AppRoutes.otpVerify, extra: {

@@ -1,15 +1,19 @@
 class AppConstants {
-  // ── Change for production ──────────────────────────────────────
-  // Android Emulator  → 10.0.2.2
-  // Physical device   → your LAN IP, e.g. 192.168.1.10
-  // Production        → https://api.yourdomain.com
+  // ── Backend endpoints ──────────────────────────────────────────
+  // For local emulator testing:
+  // --dart-define=MOVEZY_API_URL=http://10.0.2.2:3000/api
+  // --dart-define=MOVEZY_SOCKET_URL=http://10.0.2.2:3000
+  //
+  // For local physical device testing:
+  // --dart-define=MOVEZY_API_URL=http://<YOUR-LAN-IP>:3000/api
+  // --dart-define=MOVEZY_SOCKET_URL=http://<YOUR-LAN-IP>:3000
   static const String baseUrl = String.fromEnvironment(
     'MOVEZY_API_URL',
-    defaultValue: 'http://10.0.2.2:3000/api',
+    defaultValue: 'https://movezy-backend.onrender.com/api',
   );
   static const String socketUrl = String.fromEnvironment(
     'MOVEZY_SOCKET_URL',
-    defaultValue: 'http://10.0.2.2:3000',
+    defaultValue: 'https://movezy-backend.onrender.com',
   );
 
   // Shared prefs keys

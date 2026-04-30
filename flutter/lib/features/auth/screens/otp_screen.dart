@@ -7,6 +7,7 @@ import 'package:movezy/core/theme/app_theme.dart';
 import 'package:movezy/core/widgets/widgets.dart';
 import 'package:movezy/data/datasources/api_service.dart';
 import 'package:movezy/data/models/models.dart';
+import 'package:movezy/services/phone_auth_service.dart';
 import 'package:movezy/services/session_manager.dart';
 
 class OtpScreen extends StatefulWidget {
@@ -61,11 +62,16 @@ class _OtpScreenState extends State<OtpScreen> {
     if (_otpCtrl.text.length != 6) return;
     setState(() => _loading = true);
     try {
-      final res = await _api.verifyOtp(
-        phone: widget.phone,
-        otp: _otpCtrl.text,
-        name: widget.isDriver ? null : widget.name,
+      final credential = await PhoneAuthService.instance.verifyOtp(_otpCtrl.text);
+      final idToken = await credential.user?.getIdToken();
+      if (idToken == null) {
+        throw Exception('Could not verify phone. Please request OTP again.');
+      }
+      final res = await _api.exchangeFirebaseToken(
+        idToken: idToken,
         isDriver: widget.isDriver,
+        name: widget.isDriver ? null : widget.name,
+        fcmToken: SessionManager.instance.getFcmToken(),
       );
       if (res['success'] != true) {
         throw Exception('OTP verification failed');
@@ -98,7 +104,7 @@ class _OtpScreenState extends State<OtpScreen> {
   Future<void> _resend() async {
     if (_seconds > 0) return;
     try {
-      await _api.sendOtp(widget.phone);
+      await PhoneAuthService.instance.sendOtp(widget.phone);
       if (!mounted) return;
       showSnack(context, 'OTP resent!');
       _startTimer();

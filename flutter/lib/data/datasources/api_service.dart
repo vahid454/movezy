@@ -53,6 +53,21 @@ class ApiService {
     return r.data as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> exchangeFirebaseToken({
+    required String idToken,
+    required bool isDriver,
+    String? name,
+    String? fcmToken,
+  }) async {
+    final r = await _dio.post('/auth/firebase-exchange', data: {
+      'idToken': idToken,
+      'isDriver': isDriver,
+      if (name != null) 'name': name,
+      if (fcmToken != null) 'fcmToken': fcmToken,
+    });
+    return r.data as Map<String, dynamic>;
+  }
+
   // ── DRIVER REGISTER ──────────────────────────────────────────
 
   Future<Map<String, dynamic>> registerDriver({
