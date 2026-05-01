@@ -63,6 +63,32 @@ const normalizeLocation = (location) => {
   return { latitude, longitude, address };
 };
 
+// GET /api/customer/fare-quote
+router.get('/fare-quote', authenticate, requireRole('customer'), async (req, res) => {
+  try {
+    const originLat = toValidCoordinate(req.query.originLat, -90, 90);
+    const originLng = toValidCoordinate(req.query.originLng, -180, 180);
+    const destinationLat = toValidCoordinate(req.query.destinationLat, -90, 90);
+    const destinationLng = toValidCoordinate(req.query.destinationLng, -180, 180);
+    const vehicleType = `${req.query.vehicleType || ''}`.trim();
+    if (!originLat || !originLng || !destinationLat || !destinationLng || !vehicleType) {
+      return res.status(400).json({ error: 'Invalid fare quote request' });
+    }
+    if (!Object.prototype.hasOwnProperty.call(VEHICLE_FARE_CONFIG, vehicleType)) {
+      return res.status(400).json({ error: 'Unsupported vehicle type' });
+    }
+    const distanceKm = getDistance(originLat, originLng, destinationLat, destinationLng);
+    const estimatedFare = estimateFare(distanceKm, vehicleType);
+    return res.json({
+      success: true,
+      estimatedFare,
+      estimatedDistance: Math.round(distanceKm * 10) / 10
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/customer/create-booking
 router.post('/create-booking', authenticate, requireRole('customer'), async (req, res) => {
   try {
@@ -239,7 +265,7 @@ router.post('/cancel-booking', authenticate, requireRole('customer'), async (req
     if (!booking || booking.customer.toString() !== req.userId.toString()) {
       return res.status(404).json({ error: 'Booking not found' });
     }
-    if ([BOOKING_STATUSES.COMPLETED, BOOKING_STATUSES.CANCELLED].includes(booking.status)) {
+    if ([BOOKING_STATUSES.COMPLETED, BOOKING_STATUSES.CANCELLED, BOOKING_STATUSES.IN_PROGRESS].includes(booking.status)) {
       return res.status(400).json({ error: 'Cannot cancel this booking' });
     }
 
@@ -272,6 +298,38 @@ router.post('/cancel-booking', authenticate, requireRole('customer'), async (req
     res.json({ success: true, message: 'Booking cancelled' });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/customer/places-autocomplete
+router.get('/places-autocomplete', authenticate, requireRole('customer'), async (req, res) => {
+  try {
+    const query = `${req.query.query || ''}`.trim();
+    if (query.length < 3) {
+      return res.json({ success: true, predictions: [] });
+    }
+    const apiKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
+    if (!apiKey) {
+      return res.json({ success: true, predictions: [] });
+    }
+    const endpoint = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&components=country:in&key=${apiKey}`;
+    const response = await fetch(endpoint);
+    if (!response.ok) {
+      return res.json({ success: true, predictions: [] });
+    }
+    const data = await response.json();
+    const predictions = Array.isArray(data.predictions) ? data.predictions : [];
+    return res.json({
+      success: true,
+      predictions: predictions.slice(0, 5).map((item) => ({
+        placeId: item.place_id,
+        primaryText: item.structured_formatting?.main_text || item.description || '',
+        secondaryText: item.structured_formatting?.secondary_text || '',
+        description: item.description || ''
+      }))
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 });
 

@@ -38,7 +38,7 @@ const getFirebaseAdmin = () => {
 
 // Helper: Generate OTP
 const generateOTP = () => {
-  if (process.env.OTP_DEV_MODE === 'true') return process.env.OTP_DEV_CODE || '123456';
+  if (process.env.OTP_DEV_MODE === 'true') return process.env.OTP_DEV_CODE;
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
@@ -81,6 +81,9 @@ router.post('/send-otp',
     try {
       const { phone } = req.body;
       const otp = generateOTP();
+      if (!otp) {
+        return res.status(500).json({ error: 'OTP_DEV_CODE is required when OTP_DEV_MODE is enabled.' });
+      }
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
       await OTP.findOneAndUpdate(

@@ -217,9 +217,24 @@ router.post('/respond-booking', authenticate, requireRole('driver'), async (req,
     }
 
     if (req.io) {
+      const driverLatitude = Array.isArray(driver.location?.coordinates)
+        ? driver.location.coordinates[1]
+        : null;
+      const driverLongitude = Array.isArray(driver.location?.coordinates)
+        ? driver.location.coordinates[0]
+        : null;
       req.io.to(`booking_${booking._id}`).emit('booking_accepted', {
         bookingId: booking._id,
-        driver: { id: driver._id, name: driver.name, phone: driver.phone, vehicleNumber: driver.vehicleNumber, vehicleType: driver.vehicleType, rating: driver.rating }
+        driver: {
+          id: driver._id,
+          name: driver.name,
+          phone: driver.phone,
+          vehicleNumber: driver.vehicleNumber,
+          vehicleType: driver.vehicleType,
+          rating: driver.rating,
+          latitude: driverLatitude,
+          longitude: driverLongitude
+        }
       });
     }
 
