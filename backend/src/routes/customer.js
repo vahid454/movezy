@@ -190,6 +190,7 @@ router.post('/create-booking', authenticate, requireRole('customer'), async (req
       approvalStatus: 'approved',
       isOnline: true,
       isAvailable: true,
+      'location.type': 'Point',
       location: {
         $near: {
           $geometry: { type: 'Point', coordinates: [normalizedPickup.longitude, normalizedPickup.latitude] },
@@ -421,6 +422,7 @@ router.get('/nearby-drivers', authenticate, requireRole('customer'), async (req,
       approvalStatus: 'approved',
       isOnline: true,
       isAvailable: true,
+      'location.type': 'Point',
       location: {
         $near: {
           $geometry: { type: 'Point', coordinates: [parsedLongitude, parsedLatitude] },

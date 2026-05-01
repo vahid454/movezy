@@ -791,9 +791,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   _mapReady = true;
                   _refreshMapOverlay(fitCamera: true);
                 },
-                style: SessionManager.instance.nightMapsEnabled.value
-                    ? _kMapStyle
-                    : null,
+                style: SessionManager.instance.nightMapsEnabled.value ? _kMapStyle : null,
                 markers: _markers,
                 polylines: _polylines,
                 padding: EdgeInsets.only(
@@ -1110,7 +1108,10 @@ class _HomePanel extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(v.emoji, style: const TextStyle(fontSize: 22)),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(v.emoji, style: const TextStyle(fontSize: 22)),
+                      ),
                       const SizedBox(height: 6),
                       Text(v.name,
                           style: const TextStyle(

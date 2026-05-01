@@ -22,8 +22,7 @@ final appRouter = GoRouter(
     final isLoggedIn = SessionManager.instance.isLoggedIn();
     final role = SessionManager.instance.role;
     if (state.matchedLocation == AppRoutes.splash) {
-      if (!isLoggedIn) return AppRoutes.onboarding;
-      return role == 'driver' ? AppRoutes.driverHome : AppRoutes.customerHome;
+      return null;
     }
 
     final authRoutes = {

@@ -45,6 +45,8 @@ class _BookingScreenState extends State<BookingScreen> {
   final _api = ApiService();
   _PinSelectionMode _pinMode = _PinSelectionMode.dropoff;
 
+  double get _effectiveDistanceKm => _distanceKm ?? 0;
+
   @override
   void initState() {
     super.initState();
@@ -655,7 +657,9 @@ class _BookingScreenState extends State<BookingScreen> {
                           _mapCtrl = controller;
                           _refreshMapPreview(fitCamera: true);
                         },
-                        style: null,
+                        style: SessionManager.instance.nightMapsEnabled.value
+                            ? _kMapStyle
+                            : null,
                         onTap: _onMapTapped,
                         markers: _markers,
                         polylines: _polylines,
@@ -823,7 +827,9 @@ class _BookingScreenState extends State<BookingScreen> {
                                   ),
                                 ),
                                 Text(
-                                  'Base ₹${v.baseFare}',
+                                  _distanceKm != null
+                                      ? 'Est. ₹${v.estimateFare(_effectiveDistanceKm)}'
+                                      : 'Base ₹${v.baseFare}',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w700,
                                     fontSize: 12,

@@ -53,7 +53,7 @@ const bookingSchema = new mongoose.Schema({
   acceptedByDriverRequestId: { type: String, trim: true }
 }, { timestamps: true });
 
-bookingSchema.index({ pickup: '2dsphere' });
+bookingSchema.index({ 'pickup.location': '2dsphere' });
 bookingSchema.index({ customer: 1, status: 1 });
 bookingSchema.index({ driver: 1, status: 1 });
 bookingSchema.index({ createdAt: -1 });

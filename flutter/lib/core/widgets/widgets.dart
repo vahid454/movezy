@@ -223,28 +223,37 @@ class AppSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).padding.bottom;
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        border: Border(top: BorderSide(color: AppColors.border)),
-      ),
-      padding: padding ?? EdgeInsets.fromLTRB(20, 14, 20, 20 + bottomInset),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 42,
-            height: 4,
-            margin: const EdgeInsets.only(bottom: 18),
-            decoration: BoxDecoration(
-              color: AppColors.border,
-              borderRadius: BorderRadius.circular(999),
-            ),
+    final media = MediaQuery.of(context);
+    final bottomInset = media.padding.bottom;
+    final keyboardInset = media.viewInsets.bottom;
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: keyboardInset),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          border: Border(top: BorderSide(color: AppColors.border)),
+        ),
+        padding: padding ?? EdgeInsets.fromLTRB(20, 14, 20, 20 + bottomInset),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 42,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 18),
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              child,
+            ],
           ),
-          child,
-        ],
+        ),
       ),
     );
   }
@@ -361,7 +370,16 @@ class EmptyState extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(40),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text(emoji, style: const TextStyle(fontSize: 60)),
+          Container(
+            width: 92,
+            height: 92,
+            decoration: BoxDecoration(
+              color: AppColors.surface2,
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Center(child: Text(emoji, style: const TextStyle(fontSize: 46))),
+          ),
           const SizedBox(height: 20),
           Text(title,
               textAlign: TextAlign.center,

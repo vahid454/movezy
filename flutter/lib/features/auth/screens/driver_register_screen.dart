@@ -115,7 +115,14 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      showSnack(
+        context,
+        'Please fix highlighted fields before submitting.',
+        error: true,
+      );
+      return;
+    }
     setState(() => _loading = true);
     try {
       await _api.registerDriver(
@@ -316,6 +323,26 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                 ),
               ),
               const SizedBox(height: 24),
+              if (_formProgress < 1) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.warningBg,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
+                  ),
+                  child: Text(
+                    'Complete all required fields and upload all documents for faster approval.',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.warning,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
               PrimaryButton(
                   label: 'Submit Registration →',
                   onTap: _submit,
