@@ -31,8 +31,50 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
   final _api = ApiService();
   final _picker = ImagePicker();
 
+  double get _formProgress {
+    var total = 9;
+    var done = 0;
+    if (_nameCtrl.text.trim().isNotEmpty) done++;
+    if (_phoneCtrl.text.trim().length == 10) done++;
+    if (_licCtrl.text.trim().isNotEmpty) done++;
+    if (_vNumCtrl.text.trim().isNotEmpty) done++;
+    if (_vModelCtrl.text.trim().isNotEmpty) done++;
+    if (_licImg != null) done++;
+    if (_rcImg != null) done++;
+    if (_insImg != null) done++;
+    if (_photoImg != null) done++;
+    return done / total;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    for (final controller in [
+      _nameCtrl,
+      _phoneCtrl,
+      _licCtrl,
+      _vNumCtrl,
+      _vModelCtrl,
+    ]) {
+      controller.addListener(_refreshProgress);
+    }
+  }
+
+  void _refreshProgress() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    for (final controller in [
+      _nameCtrl,
+      _phoneCtrl,
+      _licCtrl,
+      _vNumCtrl,
+      _vModelCtrl,
+    ]) {
+      controller.removeListener(_refreshProgress);
+    }
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _licCtrl.dispose();
@@ -108,6 +150,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
     if (_done) return _SuccessScreen();
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: AppColors.background,
       appBar: backAppBar('Driver Registration', () => context.pop()),
       body: Form(
@@ -147,6 +190,20 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                 ]),
               ),
               const SizedBox(height: 24),
+              LinearProgressIndicator(
+                value: _formProgress,
+                backgroundColor: AppColors.surface2,
+                valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Profile completion: ${(_formProgress * 100).round()}%',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 16),
               _label('PERSONAL INFORMATION'),
               const SizedBox(height: 10),
               _field(_nameCtrl, 'Full Name *',

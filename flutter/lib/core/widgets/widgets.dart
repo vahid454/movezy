@@ -141,6 +141,8 @@ class StatusBadge extends StatelessWidget {
       case 'pending':
       case 'searching':
         return (AppColors.warning, AppColors.warningBg);
+      case 'driver_arriving':
+        return (AppColors.info, AppColors.infoBg);
       case 'rejected':
       case 'cancelled':
         return (AppColors.danger, AppColors.dangerBg);

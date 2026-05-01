@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:movezy/core/theme/app_theme.dart';
 import 'package:movezy/core/widgets/widgets.dart';
 import 'package:movezy/core/constants/app_constants.dart';
@@ -49,7 +50,7 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
       backgroundColor: AppColors.background,
       appBar: backAppBar('Trip History', () => context.pop()),
       body: _loading
-          ? const CentreLoader()
+          ? const _TripHistoryShimmer()
           : Column(children: [
               if (_trips.isNotEmpty)
                 Padding(
@@ -86,6 +87,30 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
                       ),
               ),
             ]),
+    );
+  }
+}
+
+class _TripHistoryShimmer extends StatelessWidget {
+  const _TripHistoryShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: 5,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, __) => Shimmer.fromColors(
+        baseColor: AppColors.surface2,
+        highlightColor: AppColors.surface,
+        child: Container(
+          height: 120,
+          decoration: BoxDecoration(
+            color: AppColors.surface2,
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -31,11 +31,13 @@ class ApiService {
 
   // ── AUTH ──────────────────────────────────────────────────────
 
+  @Deprecated('Use Firebase PhoneAuthService + exchangeFirebaseToken instead')
   Future<Map<String, dynamic>> sendOtp(String phone) async {
     final r = await _dio.post('/auth/send-otp', data: {'phone': phone});
     return r.data as Map<String, dynamic>;
   }
 
+  @Deprecated('Use Firebase PhoneAuthService + exchangeFirebaseToken instead')
   Future<Map<String, dynamic>> verifyOtp({
     required String phone,
     required String otp,
@@ -204,6 +206,32 @@ class ApiService {
       {String reason = 'Customer cancelled'}) async {
     await _dio.post('/customer/cancel-booking',
         data: {'bookingId': id, 'reason': reason});
+  }
+
+  Future<Map<String, dynamic>> getFareQuote({
+    required double originLat,
+    required double originLng,
+    required double destinationLat,
+    required double destinationLng,
+    required String vehicleType,
+  }) async {
+    final r = await _dio.get('/customer/fare-quote', queryParameters: {
+      'originLat': originLat,
+      'originLng': originLng,
+      'destinationLat': destinationLat,
+      'destinationLng': destinationLng,
+      'vehicleType': vehicleType,
+    });
+    return r.data as Map<String, dynamic>;
+  }
+
+  Future<List<Map<String, dynamic>>> getPlaceSuggestions(String query) async {
+    final r = await _dio.get('/customer/places-autocomplete', queryParameters: {
+      'query': query,
+    });
+    final data = r.data as Map<String, dynamic>;
+    final list = data['predictions'] as List? ?? const [];
+    return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
   Future<void> rateBooking(String id, int rating, String review) async {

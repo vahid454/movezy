@@ -19,16 +19,26 @@ import 'package:movezy/features/driver/screens/driver_profile_screen.dart';
 final appRouter = GoRouter(
   initialLocation: AppRoutes.splash,
   redirect: (BuildContext context, GoRouterState state) {
+    final isLoggedIn = SessionManager.instance.isLoggedIn();
+    final role = SessionManager.instance.role;
+    if (state.matchedLocation == AppRoutes.splash) {
+      if (!isLoggedIn) return AppRoutes.onboarding;
+      return role == 'driver' ? AppRoutes.driverHome : AppRoutes.customerHome;
+    }
+
     final authRoutes = {
-      AppRoutes.splash,
       AppRoutes.onboarding,
       AppRoutes.login,
       AppRoutes.otpVerify,
       AppRoutes.driverRegister,
     };
-    if (!SessionManager.instance.isLoggedIn() &&
-        !authRoutes.contains(state.matchedLocation)) {
+    if (!isLoggedIn && !authRoutes.contains(state.matchedLocation)) {
       return AppRoutes.login;
+    }
+    if (isLoggedIn &&
+        (state.matchedLocation == AppRoutes.login ||
+            state.matchedLocation == AppRoutes.onboarding)) {
+      return role == 'driver' ? AppRoutes.driverHome : AppRoutes.customerHome;
     }
     return null;
   },

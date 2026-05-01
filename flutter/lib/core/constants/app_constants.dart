@@ -67,6 +67,8 @@ class VehicleOption {
   final String emoji;
   final String name;
   final String desc;
+  final String capacity;
+  final String suitableFor;
   final int baseFare;
   final int perKm;
   final int minFare;
@@ -77,6 +79,8 @@ class VehicleOption {
     required this.emoji,
     required this.name,
     required this.desc,
+    required this.capacity,
+    required this.suitableFor,
     required this.baseFare,
     required this.perKm,
     required this.minFare,
@@ -102,6 +106,8 @@ const kVehicles = [
       emoji: '🏍️',
       name: 'Bike',
       desc: 'Small packages, quick delivery',
+      capacity: 'Up to 20 kg',
+      suitableFor: 'Documents and parcels',
       baseFare: 20,
       perKm: 8,
       minFare: 35,
@@ -111,6 +117,8 @@ const kVehicles = [
       emoji: '🛺',
       name: 'Auto',
       desc: 'Medium goods, city transport',
+      capacity: 'Up to 250 kg',
+      suitableFor: 'Home items and boxes',
       baseFare: 30,
       perKm: 12,
       minFare: 55,
@@ -120,6 +128,8 @@ const kVehicles = [
       emoji: '🚐',
       name: 'Mini Truck',
       desc: 'Furniture & appliances',
+      capacity: 'Up to 750 kg',
+      suitableFor: 'Furniture and appliances',
       baseFare: 80,
       perKm: 20,
       minFare: 140,
@@ -129,6 +139,8 @@ const kVehicles = [
       emoji: '🚚',
       name: 'Tempo',
       desc: 'Office & home shifting',
+      capacity: 'Up to 1200 kg',
+      suitableFor: 'Bulk household loads',
       baseFare: 100,
       perKm: 30,
       minFare: 180,
@@ -138,6 +150,8 @@ const kVehicles = [
       emoji: '🚛',
       name: 'Truck',
       desc: 'Heavy goods & warehouse',
+      capacity: 'Up to 3000 kg',
+      suitableFor: 'Industrial and heavy cargo',
       baseFare: 200,
       perKm: 50,
       minFare: 320,
@@ -147,6 +161,8 @@ const kVehicles = [
       emoji: '🛻',
       name: 'Pickup',
       desc: 'Flat goods, bikes & material',
+      capacity: 'Up to 1000 kg',
+      suitableFor: 'Bikes and hardware',
       baseFare: 120,
       perKm: 35,
       minFare: 220,

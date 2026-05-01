@@ -40,10 +40,9 @@
             </intent-filter>
         </activity>
 
-        <!-- ⚠️  Replace with your real Google Maps API key -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyAI-Yd7hKhz8LuhdWudYxvaWjshx3QyfBs"/>
+            android:value="${MOVEZY_MAPS_ANDROID_KEY}"/>
 
         <meta-data
             android:name="flutterEmbedding"

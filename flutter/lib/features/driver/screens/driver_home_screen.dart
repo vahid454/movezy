@@ -32,6 +32,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   bool _toggleLoading = false;
   StreamSubscription<Position>? _locSub;
   Timer? _refreshTimer;
+  Timer? _customerAnimationTimer;
   bool _dashboardSyncInFlight = false;
   bool _mapReady = false;
   String? _locationNotice;
@@ -53,13 +54,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   void dispose() {
     _locSub?.cancel();
     _refreshTimer?.cancel();
+    _customerAnimationTimer?.cancel();
     SocketService.instance.offAll();
     super.dispose();
   }
 
   void _startLiveRefresh() {
-    _refreshTimer = Timer.periodic(const Duration(seconds: 12), (_) {
-      _syncDashboard();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (!SocketService.instance.connected || _activeBooking == null) {
+        _syncDashboard();
+      }
     });
   }
 
@@ -161,8 +165,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       final lat = (data['latitude'] as num?)?.toDouble();
       final lng = (data['longitude'] as num?)?.toDouble();
       if (lat != null && lng != null) {
-        setState(() => _customerLatLng = LatLng(lat, lng));
-        _refreshMapOverlay();
+        _animateCustomerPosition(LatLng(lat, lng));
       }
     });
 
@@ -177,6 +180,36 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       });
       _refreshMapOverlay(fitCamera: true);
       showSnack(context, 'Customer cancelled the booking', error: true);
+    });
+  }
+
+  void _animateCustomerPosition(LatLng target) {
+    final start = _customerLatLng;
+    if (start == null) {
+      setState(() => _customerLatLng = target);
+      _refreshMapOverlay();
+      return;
+    }
+    _customerAnimationTimer?.cancel();
+    const steps = 8;
+    var currentStep = 0;
+    _customerAnimationTimer =
+        Timer.periodic(const Duration(milliseconds: 120), (timer) {
+      currentStep += 1;
+      final t = currentStep / steps;
+      final next = LatLng(
+        start.latitude + ((target.latitude - start.latitude) * t),
+        start.longitude + ((target.longitude - start.longitude) * t),
+      );
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() => _customerLatLng = next);
+      _refreshMapOverlay();
+      if (currentStep >= steps) {
+        timer.cancel();
+      }
     });
   }
 
@@ -1281,6 +1314,25 @@ class _TripPanel extends StatelessWidget {
             ],
           ),
         ),
+        if ((booking.description ?? '').trim().isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.surface2,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Text(
+              'Goods: ${booking.description!.trim()}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 14),
         if (booking.isAccepted)
           PrimaryButton(

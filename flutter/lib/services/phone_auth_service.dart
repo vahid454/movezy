@@ -26,6 +26,7 @@ class PhoneAuthService {
 
   String? _verificationId;
   int? _forceResendingToken;
+  bool get hasPendingVerification => _verificationId != null;
 
   Future<PhoneAuthStartResult> sendOtp(String phone) async {
     final completer = Completer<PhoneAuthStartResult>();
@@ -73,5 +74,10 @@ class PhoneAuthService {
       smsCode: smsCode,
     );
     return _auth.signInWithCredential(credential);
+  }
+
+  void resetVerificationSession() {
+    _verificationId = null;
+    _forceResendingToken = null;
   }
 }

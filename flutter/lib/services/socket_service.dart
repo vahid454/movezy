@@ -8,6 +8,7 @@ class SocketService {
   static final instance = SocketService._();
 
   sio.Socket? _socket;
+  final Set<String> _joinedBookingIds = <String>{};
 
   bool get connected => _socket?.connected ?? false;
 
@@ -25,7 +26,12 @@ class SocketService {
           .build(),
     );
     _socket!.connect();
-    _socket!.onConnect((_) => print('[Socket] connected'));
+    _socket!.onConnect((_) {
+      for (final bookingId in _joinedBookingIds) {
+        _socket?.emit('join_booking', bookingId);
+      }
+      print('[Socket] connected');
+    });
     _socket!.onDisconnect((_) => print('[Socket] disconnected'));
     _socket!.onConnectError((e) => print('[Socket] error: $e'));
   }
@@ -36,7 +42,11 @@ class SocketService {
     _socket = null;
   }
 
-  void joinBooking(String id) => _socket?.emit('join_booking', id);
+  void joinBooking(String id) {
+    if (id.isEmpty) return;
+    _joinedBookingIds.add(id);
+    _socket?.emit('join_booking', id);
+  }
 
   void emitDriverLoc(double lat, double lng, {String? bookingId}) {
     _socket?.emit('driver_location', {

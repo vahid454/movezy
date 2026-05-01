@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:movezy/core/constants/app_constants.dart';
 import 'package:movezy/core/theme/app_theme.dart';
 import 'package:movezy/core/widgets/widgets.dart';
@@ -44,7 +45,7 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
       backgroundColor: AppColors.background,
       appBar: backAppBar('Booking History', () => context.pop()),
       body: _loading
-          ? const CentreLoader()
+          ? const _HistoryShimmer()
           : _list.isEmpty
               ? const EmptyState(
                   emoji: '📭',
@@ -62,6 +63,30 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
                     itemBuilder: (_, i) => _BookingCard(b: _list[i]),
                   ),
                 ),
+    );
+  }
+}
+
+class _HistoryShimmer extends StatelessWidget {
+  const _HistoryShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: 5,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, __) => Shimmer.fromColors(
+        baseColor: AppColors.surface2,
+        highlightColor: AppColors.surface,
+        child: Container(
+          height: 120,
+          decoration: BoxDecoration(
+            color: AppColors.surface2,
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+      ),
     );
   }
 }

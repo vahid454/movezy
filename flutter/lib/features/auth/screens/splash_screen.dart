@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-import 'package:movezy/core/constants/app_constants.dart';
 import 'package:movezy/core/theme/app_theme.dart';
-import 'package:movezy/services/session_manager.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -27,20 +24,6 @@ class _SplashScreenState extends State<SplashScreen>
         parent: _ctrl,
         curve: const Interval(0.4, 1, curve: Curves.easeIn));
     _ctrl.forward();
-    _navigate();
-  }
-
-  Future<void> _navigate() async {
-    await Future.delayed(const Duration(milliseconds: 2200));
-    if (!mounted) return;
-    final sess = SessionManager.instance;
-    if (sess.isLoggedIn()) {
-      context.go(sess.role == 'driver'
-          ? AppRoutes.driverHome
-          : AppRoutes.customerHome);
-    } else {
-      context.go(AppRoutes.onboarding);
-    }
   }
 
   @override

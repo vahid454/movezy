@@ -32,8 +32,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   LatLng? _driverLatLng;
   StreamSubscription<Position>? _locSub;
   Timer? _refreshTimer;
+  Timer? _driverAnimationTimer;
   bool _dashboardSyncInFlight = false;
   bool _mapReady = false;
+  static const Duration _searchTimeout = Duration(minutes: 5);
   String? _locationNotice;
   final _api = ApiService();
 
@@ -51,13 +53,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   void dispose() {
     _locSub?.cancel();
     _refreshTimer?.cancel();
+    _driverAnimationTimer?.cancel();
     SocketService.instance.offAll();
     super.dispose();
   }
 
   void _startLiveRefresh() {
-    _refreshTimer = Timer.periodic(const Duration(seconds: 12), (_) {
-      _syncDashboard();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (!SocketService.instance.connected || _activeBooking == null) {
+        _syncDashboard();
+      }
     });
   }
 
@@ -223,8 +228,33 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   void _updateDriverLocation(double lat, double lng, {bool fitCamera = false}) {
-    setState(() => _driverLatLng = LatLng(lat, lng));
-    _refreshMapOverlay(fitCamera: fitCamera);
+    final target = LatLng(lat, lng);
+    final start = _driverLatLng;
+    if (start == null) {
+      setState(() => _driverLatLng = target);
+      _refreshMapOverlay(fitCamera: fitCamera);
+      return;
+    }
+    _driverAnimationTimer?.cancel();
+    const steps = 8;
+    var currentStep = 0;
+    _driverAnimationTimer = Timer.periodic(const Duration(milliseconds: 120), (timer) {
+      currentStep += 1;
+      final t = currentStep / steps;
+      final next = LatLng(
+        start.latitude + ((target.latitude - start.latitude) * t),
+        start.longitude + ((target.longitude - start.longitude) * t),
+      );
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() => _driverLatLng = next);
+      _refreshMapOverlay(fitCamera: fitCamera && currentStep == steps);
+      if (currentStep >= steps) {
+        timer.cancel();
+      }
+    });
   }
 
   void _refreshMapOverlay({bool fitCamera = false}) {
@@ -468,6 +498,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final ok = await _confirmDialog(
         'Cancel Booking?', 'Are you sure you want to cancel?');
     if (!ok || _activeBooking == null) return;
+    if (_activeBooking!.isInProgress) {
+      showSnack(context, 'Cannot cancel an in-progress booking.', error: true);
+      return;
+    }
     try {
       await _api.cancelBooking(_activeBooking!.id);
       setState(() {
@@ -757,7 +791,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   _mapReady = true;
                   _refreshMapOverlay(fitCamera: true);
                 },
-                style: null,
+                style: SessionManager.instance.nightMapsEnabled.value
+                    ? _kMapStyle
+                    : null,
                 markers: _markers,
                 polylines: _polylines,
                 padding: EdgeInsets.only(
@@ -898,6 +934,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 ? _ActivePanel(
                     booking: _activeBooking!,
                     driverPhone: _driverPhone,
+                    remainingSearch:
+                        _activeBooking!.isSearching ? _searchRemaining() : null,
                     onCall: _callDriver,
                     onCancel: _cancel,
                   )
@@ -913,6 +951,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         ],
       ),
     );
+  }
+
+  Duration? _searchRemaining() {
+    final createdAt = _activeBooking?.createdAt;
+    if (createdAt == null) return null;
+    final elapsed = DateTime.now().difference(createdAt);
+    final remaining = _searchTimeout - elapsed;
+    if (remaining.isNegative) {
+      return Duration.zero;
+    }
+    return remaining;
   }
 }
 
@@ -1042,7 +1091,7 @@ class _HomePanel extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         SizedBox(
-          height: 98,
+          height: 108,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: kVehicles.length,
@@ -1052,7 +1101,7 @@ class _HomePanel extends StatelessWidget {
               return GestureDetector(
                 onTap: onBook,
                 child: Container(
-                  width: 82,
+                  width: 112,
                   decoration: BoxDecoration(
                     color: AppColors.surface2,
                     borderRadius: BorderRadius.circular(16),
@@ -1061,7 +1110,7 @@ class _HomePanel extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(v.emoji, style: const TextStyle(fontSize: 24)),
+                      Text(v.emoji, style: const TextStyle(fontSize: 22)),
                       const SizedBox(height: 6),
                       Text(v.name,
                           style: const TextStyle(
@@ -1071,6 +1120,17 @@ class _HomePanel extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.center),
+                      const SizedBox(height: 2),
+                      Text(
+                        v.capacity,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 9,
+                          color: AppColors.textMuted,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1091,11 +1151,13 @@ class _HomePanel extends StatelessWidget {
 class _ActivePanel extends StatelessWidget {
   final BookingModel booking;
   final String? driverPhone;
+  final Duration? remainingSearch;
   final VoidCallback onCall;
   final VoidCallback onCancel;
   const _ActivePanel({
     required this.booking,
     this.driverPhone,
+    this.remainingSearch,
     required this.onCall,
     required this.onCancel,
   });
@@ -1147,6 +1209,19 @@ class _ActivePanel extends StatelessWidget {
                   ? 'Searching among ${booking.nearbyDriversCount} nearby drivers…'
                   : 'Searching for nearby drivers…',
               style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          if (remainingSearch != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              remainingSearch == Duration.zero
+                  ? 'Search window expired. Please rebook.'
+                  : 'Search timeout in ${remainingSearch!.inMinutes}:${(remainingSearch!.inSeconds % 60).toString().padLeft(2, '0')}',
+              style: const TextStyle(
+                fontSize: 11,
+                color: AppColors.warning,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ],
         if (driver != null && !booking.isSearching) ...[
           const SizedBox(height: 12),

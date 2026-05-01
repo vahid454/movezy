@@ -36,7 +36,9 @@ class _BookingScreenState extends State<BookingScreen> {
   VehicleOption _selected = kVehicles[1]; // default: auto
   bool _loading = false;
   bool _resolvingDrop = false;
+  bool _loadingFareQuote = false;
   double? _distanceKm;
+  int? _serverEstimatedFare;
   String? _dropLookupMessage;
   List<NearbyDriver> _nearbyDrivers = const [];
   Timer? _dropDebounce;
@@ -230,6 +232,7 @@ class _BookingScreenState extends State<BookingScreen> {
 
     if (pickupReady && dropReady) {
       _ensureRoadRoutePath();
+      _fetchFareQuote();
       final routePoints = _roadRoutePath.length >= 2
           ? _roadRoutePath
           : [
@@ -254,6 +257,7 @@ class _BookingScreenState extends State<BookingScreen> {
           1000;
     } else {
       _distanceKm = null;
+      _serverEstimatedFare = null;
     }
 
     setState(() {
@@ -441,9 +445,59 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   int _estimateFare() {
+    if (_serverEstimatedFare != null) return _serverEstimatedFare!;
     final km = _distanceKm;
     if (km == null) return _selected.baseFare;
     return _selected.estimateFare(km);
+  }
+
+  Future<void> _fetchFareQuote() async {
+    if (_pickupLat == 0 || _pickupLng == 0 || _dropLat == 0 || _dropLng == 0) {
+      return;
+    }
+    if (_loadingFareQuote) return;
+    _loadingFareQuote = true;
+    try {
+      final quote = await _api.getFareQuote(
+        originLat: _pickupLat,
+        originLng: _pickupLng,
+        destinationLat: _dropLat,
+        destinationLng: _dropLng,
+        vehicleType: _selected.type,
+      );
+      if (!mounted) return;
+      setState(() {
+        _serverEstimatedFare = (quote['estimatedFare'] as num?)?.toInt();
+        _distanceKm = (quote['estimatedDistance'] as num?)?.toDouble() ?? _distanceKm;
+      });
+    } catch (_) {
+      // fallback to local estimate
+    } finally {
+      _loadingFareQuote = false;
+    }
+  }
+
+  Future<bool> _confirmBooking() async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Confirm booking'),
+            content: Text(
+              'Vehicle: ${_selected.name}\nEstimated fare: ₹${_estimateFare()}\n\nProceed with this booking?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Not now'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Confirm'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   Future<void> _book() async {
@@ -463,6 +517,8 @@ class _BookingScreenState extends State<BookingScreen> {
     if (!resolved || _dropLat == 0 && _dropLng == 0) {
       return;
     }
+    final confirmed = await _confirmBooking();
+    if (!confirmed) return;
     setState(() => _loading = true);
     try {
       final booking = await _api.createBooking(
@@ -495,6 +551,7 @@ class _BookingScreenState extends State<BookingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Book Transport'),
@@ -654,7 +711,9 @@ class _BookingScreenState extends State<BookingScreen> {
                       ),
                       _InfoChip(
                         icon: Icons.currency_rupee,
-                        label: '₹${_estimateFare()} estimate',
+                        label: _loadingFareQuote
+                            ? 'Fetching live fare...'
+                            : '₹${_estimateFare()} estimate',
                       ),
                     ],
                   ),
@@ -697,7 +756,7 @@ class _BookingScreenState extends State<BookingScreen> {
                   ]),
                   const SizedBox(height: 12),
                   SizedBox(
-                    height: 124,
+                    height: 136,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       itemCount: kVehicles.length,
@@ -707,12 +766,16 @@ class _BookingScreenState extends State<BookingScreen> {
                         final isSelected = _selected.type == v.type;
                         return GestureDetector(
                           onTap: () {
-                            setState(() => _selected = v);
+                            setState(() {
+                              _selected = v;
+                              _serverEstimatedFare = null;
+                            });
                             _loadNearbyDrivers();
+                            _fetchFareQuote();
                           },
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 180),
-                            width: 150,
+                            width: 176,
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: isSelected
@@ -745,10 +808,19 @@ class _BookingScreenState extends State<BookingScreen> {
                                     )),
                                 const SizedBox(height: 3),
                                 Text(
-                                  v.desc,
-                                  maxLines: 1,
+                                  '${v.desc} · ${v.capacity}',
+                                  maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                ),
+                                Text(
+                                  v.suitableFor,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: AppColors.textMuted,
+                                  ),
                                 ),
                                 Text(
                                   'Base ₹${v.baseFare}',

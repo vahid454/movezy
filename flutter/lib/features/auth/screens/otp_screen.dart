@@ -29,6 +29,9 @@ class OtpScreen extends StatefulWidget {
 class _OtpScreenState extends State<OtpScreen> {
   final _otpCtrl = TextEditingController();
   bool _loading = false;
+  bool _resending = false;
+  String? _inlineError;
+  int _failedAttempts = 0;
   int _seconds = 30;
   Timer? _timer;
   final _api = ApiService();
@@ -60,7 +63,10 @@ class _OtpScreenState extends State<OtpScreen> {
 
   Future<void> _verify() async {
     if (_otpCtrl.text.length != 6) return;
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _inlineError = null;
+    });
     try {
       final credential = await PhoneAuthService.instance.verifyOtp(_otpCtrl.text);
       final idToken = await credential.user?.getIdToken();
@@ -94,8 +100,14 @@ class _OtpScreenState extends State<OtpScreen> {
       if (msg.contains('status code of 404') && widget.isDriver) {
         msg = 'Driver profile not found yet. Please complete driver registration first.';
       }
+      setState(() {
+        _failedAttempts += 1;
+        _inlineError = msg;
+      });
       showSnack(context, msg, error: true);
-      _otpCtrl.clear();
+      _otpCtrl
+        ..clear()
+        ..selection = const TextSelection.collapsed(offset: 0);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -103,14 +115,26 @@ class _OtpScreenState extends State<OtpScreen> {
 
   Future<void> _resend() async {
     if (_seconds > 0) return;
+    setState(() {
+      _resending = true;
+      _inlineError = null;
+      _failedAttempts = 0;
+    });
     try {
       await PhoneAuthService.instance.sendOtp(widget.phone);
       if (!mounted) return;
       showSnack(context, 'OTP resent!');
       _startTimer();
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      showSnack(context, 'Failed to resend', error: true);
+      setState(() {
+        _inlineError = e.toString().replaceFirst('Exception: ', '');
+      });
+      showSnack(context, _inlineError ?? 'Failed to resend', error: true);
+    } finally {
+      if (mounted) {
+        setState(() => _resending = false);
+      }
     }
   }
 
@@ -181,9 +205,37 @@ class _OtpScreenState extends State<OtpScreen> {
                     ),
                   ),
                   onCompleted: (_) => _verify(),
+                  onChanged: (_) {
+                    if (_inlineError != null) {
+                      setState(() => _inlineError = null);
+                    }
+                  },
+                  androidSmsAutofillMethod:
+                      AndroidSmsAutofillMethod.smsUserConsentApi,
                   autofocus: true,
                 ),
               ),
+              if (_inlineError != null) ...[
+                const SizedBox(height: 14),
+                Text(
+                  _inlineError!,
+                  style: const TextStyle(
+                    color: AppColors.danger,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+              if (_failedAttempts > 0) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Attempt $_failedAttempts failed. Verify the latest OTP and try again.',
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
               const SizedBox(height: 40),
               PrimaryButton(
                   label: 'Verify & Continue',
@@ -205,7 +257,9 @@ class _OtpScreenState extends State<OtpScreen> {
                               : 'Resend OTP',
                           style: TextStyle(
                             color: _seconds > 0
-                                ? AppColors.textMuted
+                                ? (_resending
+                                    ? AppColors.warning
+                                    : AppColors.textMuted)
                                 : AppColors.primary,
                             fontWeight: FontWeight.w700,
                           ),
