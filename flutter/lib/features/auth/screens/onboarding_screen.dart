@@ -8,18 +8,53 @@ class _Page {
   final String emoji;
   final String title;
   final String sub;
-  const _Page(this.emoji, this.title, this.sub);
+  final String chip;
+  final IconData chipIcon;
+  final Color accent;
+
+  const _Page({
+    required this.emoji,
+    required this.title,
+    required this.sub,
+    required this.chip,
+    required this.chipIcon,
+    required this.accent,
+  });
 }
 
 const _pages = [
-  _Page('📦', 'Move Anything,\nAnywhere',
-      'Bikes to trucks — we have the right vehicle for every load.'),
-  _Page('⚡', 'Instant Driver\nMatching',
-      'Get matched with nearby verified drivers in seconds.'),
-  _Page('📍', 'Live GPS\nTracking',
-      'Watch your driver in real-time from pickup to drop-off.'),
-  _Page('🤝', 'Fair Fare,\nYour Way',
-      'Negotiate directly with drivers. No hidden charges.'),
+  _Page(
+    emoji: '📦',
+    title: 'Move Anything,\nAnywhere',
+    sub: 'Bikes to trucks — the right vehicle for every load.',
+    chip: 'Verified fleet · city-wide coverage',
+    chipIcon: Icons.verified_outlined,
+    accent: AppColors.primary,
+  ),
+  _Page(
+    emoji: '⚡',
+    title: 'Instant Driver\nMatching',
+    sub: 'Nearby approved drivers get your request in real time.',
+    chip: 'Live demand map · sub-minute matching',
+    chipIcon: Icons.bolt_rounded,
+    accent: Color(0xFFF59E0B),
+  ),
+  _Page(
+    emoji: '📍',
+    title: 'Live GPS\nTracking',
+    sub: 'Follow pickup → drop-off with a clear route on the map.',
+    chip: 'Turn-by-turn route · ETA you can trust',
+    chipIcon: Icons.route_rounded,
+    accent: Color(0xFF3B82F6),
+  ),
+  _Page(
+    emoji: '🤝',
+    title: 'Fair Fare,\nYour Way',
+    sub: 'Transparent estimates before you book. Confirm with your driver.',
+    chip: 'No surprise platform fees on small goods',
+    chipIcon: Icons.payments_outlined,
+    accent: Color(0xFF22C55E),
+  ),
 ];
 
 class OnboardingScreen extends StatefulWidget {
@@ -75,21 +110,39 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           itemBuilder: (_, i) {
             final p = _pages[i];
             return Padding(
-              padding: const EdgeInsets.fromLTRB(28, 80, 28, 200),
+              padding: const EdgeInsets.fromLTRB(28, 72, 28, 200),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Container(
-                    width: 110,
-                    height: 110,
+                    width: 118,
+                    height: 118,
                     decoration: BoxDecoration(
-                      color: AppColors.surface2,
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(color: AppColors.border),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          p.accent.withValues(alpha: 0.22),
+                          AppColors.surface2,
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(32),
+                      border: Border.all(
+                        color: p.accent.withValues(alpha: 0.45),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: p.accent.withValues(alpha: 0.18),
+                          blurRadius: 28,
+                          offset: const Offset(0, 14),
+                        ),
+                      ],
                     ),
-                    child: Center(child: Text(p.emoji, style: const TextStyle(fontSize: 54))),
+                    child: Center(
+                        child: Text(p.emoji, style: const TextStyle(fontSize: 56))),
                   ),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 28),
                   Text(
                     p.title,
                     textAlign: TextAlign.center,
@@ -97,40 +150,41 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       fontSize: 34,
                       fontWeight: FontWeight.w800,
                       color: AppColors.textPrimary,
-                      height: 1.15,
+                      height: 1.12,
                       letterSpacing: -0.5,
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   Text(
                     p.sub,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 16,
                       color: AppColors.textSecondary,
-                      height: 1.6,
+                      height: 1.55,
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 22),
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
                       color: AppColors.surface,
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: AppColors.border),
+                      border: Border.all(color: p.accent.withValues(alpha: 0.28)),
                     ),
-                    child: const Row(
+                    child: Row(
                       children: [
-                        Icon(Icons.verified_user_outlined, color: AppColors.success, size: 18),
-                        SizedBox(width: 8),
+                        Icon(p.chipIcon, color: p.accent, size: 22),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'Verified drivers, live route tracking, and transparent fare estimates.',
-                            style: TextStyle(
-                              fontSize: 12,
+                            p.chip,
+                            style: const TextStyle(
+                              fontSize: 13,
                               color: AppColors.textSecondary,
                               fontWeight: FontWeight.w600,
+                              height: 1.35,
                             ),
                           ),
                         ),
@@ -143,7 +197,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           },
         ),
 
-        // bottom controls
         Positioned(
           bottom: 0,
           left: 0,
@@ -155,7 +208,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  AppColors.background.withOpacity(0),
+                  AppColors.background.withValues(alpha: 0),
                   AppColors.background,
                 ],
               ),
@@ -163,7 +216,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // dots
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: List.generate(
@@ -175,7 +227,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       height: 6,
                       decoration: BoxDecoration(
                         color: _idx == i
-                            ? AppColors.primary
+                            ? _pages[_idx].accent
                             : AppColors.border,
                         borderRadius: BorderRadius.circular(3),
                       ),

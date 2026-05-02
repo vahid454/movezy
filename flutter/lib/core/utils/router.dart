@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:movezy/core/constants/app_constants.dart';
 import 'package:movezy/services/session_manager.dart';
-import 'package:movezy/features/auth/screens/splash_screen.dart';
 import 'package:movezy/features/auth/screens/onboarding_screen.dart';
 import 'package:movezy/features/auth/screens/login_screen.dart';
 import 'package:movezy/features/auth/screens/otp_screen.dart';
@@ -17,13 +16,10 @@ import 'package:movezy/features/driver/screens/driver_pending_screen.dart';
 import 'package:movezy/features/driver/screens/driver_profile_screen.dart';
 
 final appRouter = GoRouter(
-  initialLocation: AppRoutes.splash,
+  initialLocation: AppRoutes.onboarding,
   redirect: (BuildContext context, GoRouterState state) {
     final isLoggedIn = SessionManager.instance.isLoggedIn();
     final role = SessionManager.instance.role;
-    if (state.matchedLocation == AppRoutes.splash) {
-      return null;
-    }
 
     final authRoutes = {
       AppRoutes.onboarding,
@@ -42,10 +38,6 @@ final appRouter = GoRouter(
     return null;
   },
   routes: [
-    GoRoute(
-      path: AppRoutes.splash,
-      builder: (_, __) => const SplashScreen(),
-    ),
     GoRoute(
       path: AppRoutes.onboarding,
       builder: (_, __) => const OnboardingScreen(),

@@ -54,8 +54,8 @@ class AppConstants {
 }
 
 class AppRoutes {
-  static const splash = '/';
-  static const onboarding = '/onboarding';
+  /// First-run / signed-out entry — premium onboarding (replaces separate splash).
+  static const onboarding = '/';
   static const login = '/login';
   static const otpVerify = '/otp';
   static const driverRegister = '/driver-register';

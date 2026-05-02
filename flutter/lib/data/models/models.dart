@@ -253,6 +253,7 @@ class BookingModel {
 class NearbyDriver {
   final String id;
   final String name;
+  final String phone;
   final String vehicleNumber;
   final String vehicleType;
   final double rating;
@@ -262,6 +263,7 @@ class NearbyDriver {
   const NearbyDriver({
     required this.id,
     required this.name,
+    this.phone = '',
     required this.vehicleNumber,
     required this.vehicleType,
     required this.rating,
@@ -273,6 +275,7 @@ class NearbyDriver {
     return NearbyDriver(
       id: (j['_id'] ?? j['id'] ?? '').toString(),
       name: (j['name'] ?? '').toString(),
+      phone: (j['phone'] ?? '').toString(),
       vehicleNumber: (j['vehicleNumber'] ?? '').toString(),
       vehicleType: (j['vehicleType'] ?? '').toString(),
       rating:

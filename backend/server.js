@@ -20,6 +20,8 @@ const {
   createBookingActionLimiter,
   createLocationUpdateLimiter
 } = require('./src/middleware/rateLimits');
+const { dropLegacyBookingGeoIndexes } = require('./src/utils/bookingIndexes');
+const Booking = require('./src/models/Booking');
 
 const app = express();
 const server = http.createServer(app);
@@ -85,6 +87,12 @@ const startServer = async () => {
   try {
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/movezy');
     console.log('✅ MongoDB connected');
+    await dropLegacyBookingGeoIndexes(mongoose.connection);
+    try {
+      await Booking.syncIndexes();
+    } catch (err) {
+      console.warn('Booking.syncIndexes:', err.message);
+    }
     server.listen(PORT, () => {
       console.log(`🚀 Movezy Server running on port ${PORT}`);
     });

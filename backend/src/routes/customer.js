@@ -450,7 +450,7 @@ router.get('/nearby-drivers', authenticate, requireRole('customer'), async (req,
     };
     if (vehicleType) query.vehicleType = vehicleType;
     const driverCandidates = await Driver.find(query)
-      .select('name vehicleNumber vehicleType rating location')
+      .select('name phone vehicleNumber vehicleType rating location')
       .limit(120);
     const drivers = sortDriversByDistanceKm(
       driverCandidates,

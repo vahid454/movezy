@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:movezy/core/constants/app_constants.dart';
 import 'package:movezy/core/theme/app_theme.dart';
+import 'package:movezy/data/models/models.dart';
 
 // ── Primary button ────────────────────────────────────────────────
 class PrimaryButton extends StatelessWidget {
@@ -587,4 +590,122 @@ class InlineNoticeCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Bottom sheet when customer taps a nearby driver marker on the map.
+Future<void> showNearbyDriverPeekSheet(
+  BuildContext context,
+  NearbyDriver driver,
+) async {
+  final vehicleLabel = vehicleByType(driver.vehicleType)?.name ??
+      driver.vehicleType.replaceAll('_', ' ');
+  final phone = driver.phone.trim();
+  await showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => Container(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            Text(
+              vehicleLabel.toUpperCase(),
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: AppColors.primary,
+                letterSpacing: 1.2,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              driver.name.trim().isEmpty ? 'Verified driver' : driver.name,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${driver.vehicleNumber} · ${driver.rating.toStringAsFixed(1)}★',
+              style: const TextStyle(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (phone.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.call_rounded, color: AppColors.primary),
+                title: Text(phone,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary)),
+                subtitle: const Text('Tap to call',
+                    style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                onTap: () {
+                  launchUrl(Uri.parse('tel:$phone'));
+                  Navigator.pop(ctx);
+                },
+              ),
+            ] else
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  'Phone will appear when this driver is assigned to your trip.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textMuted.withValues(alpha: 0.95),
+                    height: 1.35,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// Assigned driver on active trip (yellow pin).
+Future<void> showAssignedDriverPeekSheet(
+  BuildContext context,
+  DriverProfile driver, {
+  String? displayPhone,
+}) async {
+  final phone = (displayPhone ?? driver.phone).trim();
+  await showNearbyDriverPeekSheet(
+    context,
+    NearbyDriver(
+      id: driver.id,
+      name: driver.name,
+      phone: phone,
+      vehicleNumber: driver.vehicleNumber,
+      vehicleType: driver.vehicleType,
+      rating: driver.rating,
+      latitude: driver.latitude,
+      longitude: driver.longitude,
+    ),
+  );
 }

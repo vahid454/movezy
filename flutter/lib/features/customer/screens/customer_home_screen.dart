@@ -33,6 +33,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   StreamSubscription<Position>? _locSub;
   Timer? _refreshTimer;
   Timer? _driverAnimationTimer;
+  Timer? _tripRouteTimer;
+  LatLng? _tripRoutePendingStart;
+  LatLng? _tripRoutePendingEnd;
   bool _dashboardSyncInFlight = false;
   bool _mapReady = false;
   static const Duration _searchTimeout = Duration(minutes: 5);
@@ -54,6 +57,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     _locSub?.cancel();
     _refreshTimer?.cancel();
     _driverAnimationTimer?.cancel();
+    _tripRouteTimer?.cancel();
     SocketService.instance.offAll();
     super.dispose();
   }
@@ -302,6 +306,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       );
     }
     if (_driverLatLng != null) {
+      final d = booking?.driver;
       nextMarkers.add(
         Marker(
           markerId: const MarkerId('driver'),
@@ -309,7 +314,18 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           icon: BitmapDescriptor.defaultMarkerWithHue(
             BitmapDescriptor.hueYellow,
           ),
-          infoWindow: const InfoWindow(title: 'Driver'),
+          infoWindow: InfoWindow(
+            title: 'Your driver',
+            snippet: d != null && d.name.isNotEmpty
+                ? '${d.name} · ${d.vehicleNumber}'
+                : 'Tap for name & phone',
+          ),
+          onTap: () {
+            if (d != null) {
+              showAssignedDriverPeekSheet(context, d,
+                  displayPhone: _driverPhone);
+            }
+          },
         ),
       );
     }
@@ -319,16 +335,21 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         final lat = driver.latitude;
         final lng = driver.longitude;
         if (lat == null || lng == null || lat == 0 || lng == 0) continue;
+        final vLabel = vehicleByType(driver.vehicleType)?.name ??
+            driver.vehicleType.replaceAll('_', ' ');
         nextMarkers.add(
           Marker(
             markerId: MarkerId('nearby_${driver.id}'),
             position: LatLng(lat, lng),
-            icon: BitmapDescriptor.defaultMarkerWithHue(_markerHueForVehicle(driver.vehicleType)),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+                _markerHueForVehicle(driver.vehicleType)),
             infoWindow: InfoWindow(
-              title: '${_vehicleEmoji(driver.vehicleType)} ${driver.name.isNotEmpty ? driver.name : 'Nearby driver'}',
-              snippet:
-                  '${driver.vehicleNumber} · ${driver.vehicleType.replaceAll('_', ' ')}',
+              title: '${vLabel.toUpperCase()} · ${driver.vehicleNumber}',
+              snippet: driver.name.isNotEmpty
+                  ? '${driver.name} · tap for details'
+                  : 'Tap pin for driver details',
             ),
+            onTap: () => showNearbyDriverPeekSheet(context, driver),
           ),
         );
       }
@@ -341,7 +362,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         LatLng(dropoff.latitude, dropoff.longitude),
     ];
     if (routePoints.length >= 2) {
-      _ensureTripRoutePath(routePoints[0], routePoints[1]);
+      _scheduleTripRouteFetch(routePoints[0], routePoints[1]);
       nextPolylines.add(
         Polyline(
           polylineId: const PolylineId('trip-route'),
@@ -399,11 +420,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
   }
 
-  String _vehicleEmoji(String vehicleType) {
-    final vehicle = vehicleByType(vehicleType);
-    return vehicle?.emoji ?? '🚘';
-  }
-
   double _markerHueForVehicle(String vehicleType) {
     switch (vehicleType) {
       case 'bike':
@@ -421,6 +437,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       default:
         return BitmapDescriptor.hueOrange;
     }
+  }
+
+  void _scheduleTripRouteFetch(LatLng start, LatLng end) {
+    _tripRouteTimer?.cancel();
+    _tripRoutePendingStart = start;
+    _tripRoutePendingEnd = end;
+    _tripRouteTimer = Timer(const Duration(milliseconds: 420), () {
+      if (!mounted ||
+          _tripRoutePendingStart == null ||
+          _tripRoutePendingEnd == null) {
+        return;
+      }
+      _ensureTripRoutePath(_tripRoutePendingStart!, _tripRoutePendingEnd!);
+    });
   }
 
   Future<void> _ensureTripRoutePath(LatLng start, LatLng end) async {

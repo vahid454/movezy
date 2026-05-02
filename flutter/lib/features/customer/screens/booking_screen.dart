@@ -42,6 +42,7 @@ class _BookingScreenState extends State<BookingScreen> {
   String? _dropLookupMessage;
   List<NearbyDriver> _nearbyDrivers = const [];
   Timer? _dropDebounce;
+  Timer? _routeRebuildDebounce;
   final _api = ApiService();
   _PinSelectionMode _pinMode = _PinSelectionMode.dropoff;
 
@@ -57,6 +58,7 @@ class _BookingScreenState extends State<BookingScreen> {
   @override
   void dispose() {
     _dropDebounce?.cancel();
+    _routeRebuildDebounce?.cancel();
     _pickupCtrl.dispose();
     _dropCtrl.dispose();
     _descCtrl.dispose();
@@ -171,7 +173,10 @@ class _BookingScreenState extends State<BookingScreen> {
     });
   }
 
-  void _refreshMapPreview({bool fitCamera = false}) {
+  void _refreshMapPreview({
+    bool fitCamera = false,
+    bool scheduleRoute = true,
+  }) {
     final nextMarkers = <Marker>{};
     final nextPolylines = <Polyline>{};
 
@@ -191,7 +196,14 @@ class _BookingScreenState extends State<BookingScreen> {
             snippet: _pickupCtrl.text.trim(),
           ),
           draggable: true,
-          onDragEnd: (latLng) => _setPickupFromMap(latLng),
+          onDrag: (LatLng p) {
+            setState(() {
+              _pickupLat = p.latitude;
+              _pickupLng = p.longitude;
+            });
+            _scheduleRouteRebuild();
+          },
+          onDragEnd: (latLng) => unawaited(_finalizePickupDrag(latLng)),
         ),
       );
     }
@@ -209,7 +221,14 @@ class _BookingScreenState extends State<BookingScreen> {
             snippet: _dropCtrl.text.trim(),
           ),
           draggable: true,
-          onDragEnd: (latLng) => _setDropFromMap(latLng),
+          onDrag: (LatLng p) {
+            setState(() {
+              _dropLat = p.latitude;
+              _dropLng = p.longitude;
+            });
+            _scheduleRouteRebuild();
+          },
+          onDragEnd: (latLng) => unawaited(_finalizeDropDrag(latLng)),
         ),
       );
     }
@@ -218,23 +237,26 @@ class _BookingScreenState extends State<BookingScreen> {
       final lat = driver.latitude;
       final lng = driver.longitude;
       if (lat == null || lng == null || lat == 0 || lng == 0) continue;
+      final vLabel = vehicleByType(driver.vehicleType)?.name ??
+          driver.vehicleType.replaceAll('_', ' ');
       nextMarkers.add(
         Marker(
           markerId: MarkerId('nearby_${driver.id}'),
           position: LatLng(lat, lng),
           icon: BitmapDescriptor.defaultMarkerWithHue(_markerHueForVehicle(driver.vehicleType)),
           infoWindow: InfoWindow(
-            title: '${_vehicleEmoji(driver.vehicleType)} ${driver.name.isNotEmpty ? driver.name : 'Nearby driver'}',
-            snippet:
-                '${driver.vehicleNumber} · ${driver.rating.toStringAsFixed(1)}★',
+            title: '${vLabel.toUpperCase()} · ${driver.vehicleNumber}',
+            snippet: driver.name.isNotEmpty
+                ? '${driver.name} · tap for details'
+                : 'Tap pin for driver details',
           ),
+          onTap: () => showNearbyDriverPeekSheet(context, driver),
         ),
       );
     }
 
     if (pickupReady && dropReady) {
-      _ensureRoadRoutePath();
-      _fetchFareQuote();
+      if (scheduleRoute) _scheduleRouteRebuild();
       final routePoints = _roadRoutePath.length >= 2
           ? _roadRoutePath
           : [
@@ -287,36 +309,84 @@ class _BookingScreenState extends State<BookingScreen> {
     }
   }
 
-  void _onMapTapped(LatLng latLng) {
-    if (_pinMode == _PinSelectionMode.pickup) {
-      _setPickupFromMap(latLng);
+  void _scheduleRouteRebuild() {
+    if (!(_pickupLat != 0 || _pickupLng != 0) ||
+        !(_dropLat != 0 || _dropLng != 0)) {
       return;
     }
-    _setDropFromMap(latLng);
+    _routeRebuildDebounce?.cancel();
+    _routeRebuildDebounce = Timer(const Duration(milliseconds: 380), () {
+      if (!mounted) return;
+      unawaited(_resolveRoadRouteAndFare());
+    });
   }
 
-  Future<void> _setPickupFromMap(LatLng latLng) async {
-    final address = await _reverseGeocode(latLng);
+  Future<void> _resolveRoadRouteAndFare() async {
+    await _ensureRoadRoutePath();
     if (!mounted) return;
+    await _fetchFareQuote();
+    if (!mounted) return;
+    _refreshMapPreview(scheduleRoute: false);
+  }
+
+  Future<void> _finalizePickupDrag(LatLng latLng) async {
     setState(() {
       _pickupLat = latLng.latitude;
       _pickupLng = latLng.longitude;
-      _pickupCtrl.text = address;
     });
-    await _loadNearbyDrivers();
-    _refreshMapPreview(fitCamera: true);
-  }
-
-  Future<void> _setDropFromMap(LatLng latLng) async {
     final address = await _reverseGeocode(latLng);
     if (!mounted) return;
+    setState(() => _pickupCtrl.text = address);
+    await _loadNearbyDrivers();
+    _scheduleRouteRebuild();
+    _refreshMapPreview(fitCamera: false, scheduleRoute: false);
+  }
+
+  Future<void> _finalizeDropDrag(LatLng latLng) async {
     setState(() {
       _dropLat = latLng.latitude;
       _dropLng = latLng.longitude;
-      _dropCtrl.text = address;
+      _dropLookupMessage = null;
+    });
+    final address = await _reverseGeocode(latLng);
+    if (!mounted) return;
+    setState(() => _dropCtrl.text = address);
+    _scheduleRouteRebuild();
+    _refreshMapPreview(fitCamera: false, scheduleRoute: false);
+  }
+
+  void _onMapTapped(LatLng latLng) {
+    if (_pinMode == _PinSelectionMode.pickup) {
+      unawaited(_setPickupFromMap(latLng));
+      return;
+    }
+    unawaited(_setDropFromMap(latLng));
+  }
+
+  Future<void> _setPickupFromMap(LatLng latLng) async {
+    setState(() {
+      _pickupLat = latLng.latitude;
+      _pickupLng = latLng.longitude;
+    });
+    _refreshMapPreview(fitCamera: true);
+    final address = await _reverseGeocode(latLng);
+    if (!mounted) return;
+    setState(() => _pickupCtrl.text = address);
+    await _loadNearbyDrivers();
+    _refreshMapPreview(fitCamera: false);
+  }
+
+  Future<void> _setDropFromMap(LatLng latLng) async {
+    setState(() {
+      _dropLat = latLng.latitude;
+      _dropLng = latLng.longitude;
       _dropLookupMessage = null;
     });
     _refreshMapPreview(fitCamera: true);
+    final address = await _reverseGeocode(latLng);
+    if (!mounted) return;
+    setState(() => _dropCtrl.text = address);
+    _refreshMapPreview(fitCamera: false);
   }
 
   Future<String> _reverseGeocode(LatLng latLng) async {
@@ -332,11 +402,6 @@ class _BookingScreenState extends State<BookingScreen> {
       if (address.isNotEmpty) return address;
     } catch (_) {}
     return '${latLng.latitude.toStringAsFixed(5)}, ${latLng.longitude.toStringAsFixed(5)}';
-  }
-
-  String _vehicleEmoji(String vehicleType) {
-    final vehicle = vehicleByType(vehicleType);
-    return vehicle?.emoji ?? '🚘';
   }
 
   double _markerHueForVehicle(String vehicleType) {
@@ -395,7 +460,6 @@ class _BookingScreenState extends State<BookingScreen> {
       final drivers = await _api.getNearbyDrivers(
         latitude: _pickupLat,
         longitude: _pickupLng,
-        vehicleType: _selected.type,
       );
       if (!mounted) return;
       setState(() => _nearbyDrivers = drivers);
