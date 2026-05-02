@@ -293,7 +293,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     _driverAnimationTimer?.cancel();
     const steps = 8;
     var currentStep = 0;
-    _driverAnimationTimer = Timer.periodic(const Duration(milliseconds: 120), (timer) {
+    _driverAnimationTimer =
+        Timer.periodic(const Duration(milliseconds: 120), (timer) {
       currentStep += 1;
       final t = currentStep / steps;
       final next = LatLng(
@@ -401,8 +402,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           Marker(
             markerId: MarkerId('nearby_${driver.id}'),
             position: LatLng(lat, lng),
-            anchor:
-                useCenterAnchor ? const Offset(0.5, 0.5) : const Offset(0.5, 1.0),
+            anchor: useCenterAnchor
+                ? const Offset(0.5, 0.5)
+                : const Offset(0.5, 1.0),
             icon: nearbyIcon,
             infoWindow: InfoWindow(
               title: '${vLabel.toUpperCase()} · ${driver.vehicleNumber}',
@@ -515,7 +517,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   Future<void> _ensureTripRoutePath(LatLng start, LatLng end) async {
-    final routeKey = '${start.latitude.toStringAsFixed(5)},${start.longitude.toStringAsFixed(5)}:${end.latitude.toStringAsFixed(5)},${end.longitude.toStringAsFixed(5)}';
+    final routeKey =
+        '${start.latitude.toStringAsFixed(5)},${start.longitude.toStringAsFixed(5)}:${end.latitude.toStringAsFixed(5)},${end.longitude.toStringAsFixed(5)}';
     if (_tripRouteKey == routeKey && _tripRoutePath.isNotEmpty) return;
 
     _tripRouteKey = routeKey;
@@ -854,7 +857,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       final toDrop = liveBooking.isInProgress;
       return InlineNoticeCard(
         icon: Icons.local_shipping_outlined,
-        title: toDrop ? 'Driver is on the way to drop-off' : 'Driver is on the way to you',
+        title: toDrop
+            ? 'Driver is on the way to drop-off'
+            : 'Driver is on the way to you',
         subtitle: toDrop
             ? 'Watch the smaller vehicle pin move on the map — the dashed line points toward your drop-off as they drive.'
             : 'Watch the smaller vehicle pin move on the map — the dashed line shows how far they are from pickup.',
@@ -877,7 +882,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Widget build(BuildContext context) {
     final user = SessionManager.instance.getUser();
     final notice = _buildDashboardNotice();
-    final mapBottomInset = _activeBooking != null ? 292.0 : 154.0;
+    final mapBottomInset = _activeBooking != null ? 354.0 : 154.0;
     return Scaffold(
       body: Stack(
         children: [
@@ -897,7 +902,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   _mapReady = true;
                   _refreshMapOverlay(fitCamera: true);
                 },
-                style: SessionManager.instance.nightMapsEnabled.value ? _kMapStyle : null,
+                style: SessionManager.instance.nightMapsEnabled.value
+                    ? _kMapStyle
+                    : null,
                 markers: _markers,
                 polylines: _polylines,
                 padding: EdgeInsets.only(
@@ -1000,7 +1007,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       if (_pos != null)
                         InfoPill(
                           icon: Icons.my_location,
-                          label: '${_pos!.latitude.toStringAsFixed(4)}, ${_pos!.longitude.toStringAsFixed(4)}',
+                          label:
+                              '${_pos!.latitude.toStringAsFixed(4)}, ${_pos!.longitude.toStringAsFixed(4)}',
                           color: AppColors.info,
                         ),
                       InfoPill(
@@ -1260,6 +1268,8 @@ class _ActivePanel extends StatelessWidget {
           ),
           StatusBadge(status: booking.status),
         ]),
+        const SizedBox(height: 12),
+        _MiniFareBreakup(booking: booking),
         if (booking.isSearching) ...[
           const SizedBox(height: 14),
           const LinearProgressIndicator(
@@ -1341,6 +1351,79 @@ class _ActivePanel extends StatelessWidget {
           OutlineBtn(label: '✕   Cancel Booking', onTap: onCancel, height: 44),
         ],
       ]),
+    );
+  }
+}
+
+class _MiniFareBreakup extends StatelessWidget {
+  final BookingModel booking;
+
+  const _MiniFareBreakup({required this.booking});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.receipt_long_outlined,
+                  size: 16, color: AppColors.primary),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Fare breakup',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              Text(
+                '₹${booking.customerPaysInr}',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
+          if (booking.platformFee != null || booking.driverPayout != null) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    booking.platformFee != null
+                        ? 'Movezy fee ₹${booking.platformFee}'
+                        : 'Movezy fee locked',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+                Text(
+                  'Driver ~₹${booking.driverEarnsInr}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

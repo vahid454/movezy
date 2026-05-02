@@ -35,8 +35,25 @@ const attachFareSplit = (b) => {
   };
 };
 
+const markCommissionDue = (booking) => {
+  if (!booking) return;
+  booking.platformFeeStatus = 'due';
+};
+
+const flagCommissionRisk = (booking, code, note) => {
+  if (!booking || !code) return;
+  booking.commissionRiskFlags = booking.commissionRiskFlags || [];
+  booking.commissionRiskFlags.push({
+    code,
+    note,
+    createdAt: new Date()
+  });
+};
+
 module.exports = {
   commissionPercent,
   splitCustomerFare,
-  attachFareSplit
+  attachFareSplit,
+  markCommissionDue,
+  flagCommissionRisk
 };

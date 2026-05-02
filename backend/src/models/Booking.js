@@ -28,6 +28,16 @@ const bookingSchema = new mongoose.Schema({
   estimatedFare: { type: Number },   // in INR — customer pays this total
   platformFee: { type: Number },     // Movezy commission (INR) slice of estimatedFare
   driverPayout: { type: Number },    // estimatedFare - platformFee
+  platformFeeStatus: {
+    type: String,
+    enum: ['pending', 'due', 'settled', 'waived'],
+    default: 'pending'
+  },
+  commissionRiskFlags: [{
+    code: { type: String, trim: true },
+    note: { type: String, trim: true },
+    createdAt: { type: Date, default: Date.now }
+  }],
   status: {
     type: String,
     enum: [

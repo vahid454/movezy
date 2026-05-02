@@ -12,7 +12,7 @@ const { sendPushNotification } = require('../utils/notifications');
 const { BOOKING_STATUSES, enforceTransitionOrBypass } = require('../utils/bookingPolicy');
 const { IDEMPOTENCY_ENABLED, getIdempotencyKey } = require('../utils/idempotency');
 const { logAuditEvent } = require('../utils/auditLogger');
-const { attachFareSplit } = require('../utils/fareCommission');
+const { attachFareSplit, markCommissionDue } = require('../utils/fareCommission');
 
 const getDistanceKm = (lat1, lon1, lat2, lon2) => {
   const R = 6371;
@@ -321,13 +321,18 @@ router.post('/complete-trip', authenticate, requireRole('driver'), async (req, r
 
     booking.status = BOOKING_STATUSES.COMPLETED;
     booking.completedAt = new Date();
+    markCommissionDue(booking);
     await booking.save();
     logAuditEvent({
       req,
       action: 'complete_trip',
       entityType: 'booking',
       entityId: booking._id,
-      metadata: { driverId: driver._id }
+      metadata: {
+        driverId: driver._id,
+        platformFee: booking.platformFee,
+        platformFeeStatus: booking.platformFeeStatus
+      }
     });
 
     driver.isAvailable = true;

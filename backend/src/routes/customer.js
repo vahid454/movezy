@@ -9,7 +9,7 @@ const { sendMulticastNotification } = require('../utils/notifications');
 const { BOOKING_STATUSES, enforceTransitionOrBypass } = require('../utils/bookingPolicy');
 const { IDEMPOTENCY_ENABLED, getIdempotencyKey } = require('../utils/idempotency');
 const { logAuditEvent } = require('../utils/auditLogger');
-const { splitCustomerFare, attachFareSplit } = require('../utils/fareCommission');
+const { splitCustomerFare, attachFareSplit, flagCommissionRisk } = require('../utils/fareCommission');
 
 const VEHICLE_FARE_CONFIG = {
   bike: { baseFare: 20, perKm: 8, minFare: 35 },
@@ -334,9 +334,17 @@ router.post('/cancel-booking', authenticate, requireRole('customer'), async (req
       return res.status(400).json({ error: transitionGuard.message });
     }
 
+    const previousStatus = booking.status;
     booking.status = BOOKING_STATUSES.CANCELLED;
     booking.cancelledBy = 'customer';
     booking.cancellationReason = reason || 'Customer cancelled';
+    if ([BOOKING_STATUSES.ACCEPTED, BOOKING_STATUSES.DRIVER_ARRIVING].includes(previousStatus)) {
+      flagCommissionRisk(
+        booking,
+        'customer_cancelled_after_driver_accept',
+        'Customer cancelled after a driver was assigned; review for possible offline settlement.'
+      );
+    }
     await booking.save();
     logAuditEvent({
       req,

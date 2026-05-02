@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:movezy/core/constants/app_constants.dart';
@@ -64,12 +66,24 @@ class OnboardingScreen extends StatefulWidget {
   State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends State<OnboardingScreen> {
+class _OnboardingScreenState extends State<OnboardingScreen>
+    with SingleTickerProviderStateMixin {
   final _ctrl = PageController();
+  late final AnimationController _motionCtrl;
   int _idx = 0;
 
   @override
+  void initState() {
+    super.initState();
+    _motionCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 8),
+    )..repeat();
+  }
+
+  @override
   void dispose() {
+    _motionCtrl.dispose();
     _ctrl.dispose();
     super.dispose();
   }
@@ -103,6 +117,41 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
         ),
+        AnimatedBuilder(
+          animation: _motionCtrl,
+          builder: (context, _) {
+            final t = _motionCtrl.value * math.pi * 2;
+            return Positioned.fill(
+              child: IgnorePointer(
+                child: Stack(
+                  children: [
+                    _FloatingVehicle(
+                      icon: Icons.two_wheeler_rounded,
+                      color: AppColors.success,
+                      left: 26 + math.sin(t) * 12,
+                      top: 138 + math.cos(t * 0.8) * 10,
+                      angle: math.sin(t) * 0.08,
+                    ),
+                    _FloatingVehicle(
+                      icon: Icons.local_shipping_rounded,
+                      color: AppColors.primary,
+                      right: 28 + math.cos(t * 0.9) * 10,
+                      top: 238 + math.sin(t) * 14,
+                      angle: -0.08 + math.cos(t) * 0.08,
+                    ),
+                    _FloatingVehicle(
+                      icon: Icons.electric_rickshaw_rounded,
+                      color: AppColors.info,
+                      left: 34 + math.cos(t * 1.1) * 14,
+                      bottom: 250 + math.sin(t * 0.9) * 10,
+                      angle: math.cos(t) * 0.06,
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
         PageView.builder(
           controller: _ctrl,
           itemCount: _pages.length,
@@ -114,33 +163,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    width: 118,
-                    height: 118,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          p.accent.withValues(alpha: 0.22),
-                          AppColors.surface2,
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(32),
-                      border: Border.all(
-                        color: p.accent.withValues(alpha: 0.45),
-                        width: 1.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: p.accent.withValues(alpha: 0.18),
-                          blurRadius: 28,
-                          offset: const Offset(0, 14),
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                        child: Text(p.emoji, style: const TextStyle(fontSize: 56))),
+                  _MovingHeroBadge(
+                    animation: _motionCtrl,
+                    accent: p.accent,
+                    emoji: p.emoji,
                   ),
                   const SizedBox(height: 28),
                   Text(
@@ -167,11 +193,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   const SizedBox(height: 22),
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
                       color: AppColors.surface,
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: p.accent.withValues(alpha: 0.28)),
+                      border:
+                          Border.all(color: p.accent.withValues(alpha: 0.28)),
                     ),
                     child: Row(
                       children: [
@@ -196,7 +224,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             );
           },
         ),
-
         Positioned(
           bottom: 0,
           left: 0,
@@ -226,9 +253,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       width: _idx == i ? 24 : 6,
                       height: 6,
                       decoration: BoxDecoration(
-                        color: _idx == i
-                            ? _pages[_idx].accent
-                            : AppColors.border,
+                        color:
+                            _idx == i ? _pages[_idx].accent : AppColors.border,
                         borderRadius: BorderRadius.circular(3),
                       ),
                     ),
@@ -247,8 +273,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   TextButton(
                     onPressed: () => context.go(AppRoutes.login),
                     child: const Text('Skip',
-                        style: TextStyle(
-                            color: AppColors.textSecondary)),
+                        style: TextStyle(color: AppColors.textSecondary)),
                   ),
                 ] else
                   PrimaryButton(
@@ -260,6 +285,129 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
         ),
       ]),
+    );
+  }
+}
+
+class _MovingHeroBadge extends StatelessWidget {
+  final Animation<double> animation;
+  final Color accent;
+  final String emoji;
+
+  const _MovingHeroBadge({
+    required this.animation,
+    required this.accent,
+    required this.emoji,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        final t = animation.value * math.pi * 2;
+        return Transform.translate(
+          offset: Offset(0, math.sin(t) * 7),
+          child: Transform.rotate(
+            angle: math.sin(t * 0.7) * 0.035,
+            child: child,
+          ),
+        );
+      },
+      child: Container(
+        width: 132,
+        height: 132,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              accent.withValues(alpha: 0.22),
+              AppColors.surface,
+            ],
+          ),
+          borderRadius: BorderRadius.circular(34),
+          border: Border.all(
+            color: accent.withValues(alpha: 0.45),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: accent.withValues(alpha: 0.22),
+              blurRadius: 34,
+              offset: const Offset(0, 16),
+            ),
+          ],
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 26,
+              child: Container(
+                height: 3,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+            ),
+            Text(emoji, style: const TextStyle(fontSize: 58)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FloatingVehicle extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final double? left;
+  final double? right;
+  final double? top;
+  final double? bottom;
+  final double angle;
+
+  const _FloatingVehicle({
+    required this.icon,
+    required this.color,
+    this.left,
+    this.right,
+    this.top,
+    this.bottom,
+    this.angle = 0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: left,
+      right: right,
+      top: top,
+      bottom: bottom,
+      child: Transform.rotate(
+        angle: angle,
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: AppColors.surface.withValues(alpha: 0.82),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color.withValues(alpha: 0.24)),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.13),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Icon(icon, color: color, size: 24),
+        ),
+      ),
     );
   }
 }
