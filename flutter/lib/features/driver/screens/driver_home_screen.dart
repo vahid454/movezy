@@ -502,6 +502,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       'dropoff': {'address': o['dropoffAddress']},
       'estimatedDistance': o['estimatedDistance'],
       'estimatedFare': o['estimatedFare'],
+      'driverPayout': o['driverPayout'],
+      'platformFee': o['platformFee'],
       'description': o['description'],
     });
   }
@@ -515,7 +517,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         (data['pickup'] as Map?)?['address']?.toString() ?? 'Unknown';
     final drop = (data['dropoff'] as Map?)?['address']?.toString() ?? 'Unknown';
     final dist = (data['estimatedDistance'] as num?)?.toDouble() ?? 0;
-    final fare = (data['estimatedFare'] as num?)?.toInt() ?? 0;
+    final customerFare = (data['estimatedFare'] as num?)?.toInt() ?? 0;
+    final driverPayout = (data['driverPayout'] as num?)?.toInt() ??
+        (customerFare > 0 ? (customerFare * 0.9).round() : 0);
     final desc = data['description']?.toString() ?? '';
 
     showDialog(
@@ -563,34 +567,45 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             _Row('📍', pickup),
             _Row('🏁', drop),
             _Row('📏', '${dist.toStringAsFixed(1)} km'),
-            _Row('💰', '₹$fare estimated'),
+            _Row('💰', 'Customer ₹$customerFare · You earn ~₹$driverPayout'),
             if (desc.isNotEmpty) _Row('📝', desc),
           ],
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
         actions: [
-          OutlinedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await _api.respondToBooking(bookingId, 'reject');
-            },
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: AppColors.danger),
-              foregroundColor: AppColors.danger,
-            ),
-            child: const Text('✕  Reject'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              final ok = await _api.respondToBooking(bookingId, 'accept');
-              if (ok && mounted) {
-                SocketService.instance.joinBooking(bookingId);
-                await _loadProfile();
-                showSnack(context, '✅ Booking accepted!');
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
-            child: const Text('✓  Accept'),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    await _api.respondToBooking(bookingId, 'reject');
+                  },
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppColors.danger),
+                    foregroundColor: AppColors.danger,
+                  ),
+                  child: const Text('✕  Reject'),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    final ok = await _api.respondToBooking(bookingId, 'accept');
+                    if (ok && mounted) {
+                      SocketService.instance.joinBooking(bookingId);
+                      await _loadProfile();
+                      showSnack(context, '✅ Booking accepted!');
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.success),
+                  child: const Text('✓  Accept'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -1084,7 +1099,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                           final o = _openNearby[i];
                           final vt = o['vehicleType']?.toString() ?? '';
                           final v = vehicleByType(vt);
-                          final fare = (o['estimatedFare'] as num?)?.toInt() ?? 0;
+                          final customerFare =
+                              (o['estimatedFare'] as num?)?.toInt() ?? 0;
+                          final earn = (o['driverPayout'] as num?)?.toInt() ??
+                              (customerFare > 0
+                                  ? (customerFare * 0.9).round()
+                                  : 0);
                           final km = (o['distanceKm'] as num?)?.toDouble() ?? 0;
                           return Material(
                             color: AppColors.surface2,
@@ -1115,7 +1135,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                           ),
                                         ),
                                         Text(
-                                          '${km.toStringAsFixed(1)} km · ₹$fare',
+                                          '${km.toStringAsFixed(1)} km · earn ~₹$earn',
                                           style: const TextStyle(
                                             fontSize: 11,
                                             color: AppColors.textSecondary,
@@ -1464,7 +1484,7 @@ class _TripPanel extends StatelessWidget {
                 Text(
                     '${booking.displayBookingId} · '
                     '${booking.estimatedDistance.toStringAsFixed(1)} km · '
-                    '₹${booking.estimatedFare}',
+                    'You earn ₹${booking.driverEarnsInr} · customer ₹${booking.customerPaysInr}',
                     style: const TextStyle(
                         fontSize: 12, color: AppColors.textSecondary)),
                 if ((booking.customerName?.isNotEmpty ?? false) ||

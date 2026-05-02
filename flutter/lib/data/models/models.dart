@@ -1,5 +1,26 @@
 import 'dart:convert';
 
+int _readInt(dynamic v, [int defaultValue = 0]) {
+  if (v == null) return defaultValue;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return int.tryParse(v.toString()) ?? defaultValue;
+}
+
+double _readDouble(dynamic v, [double defaultValue = 0.0]) {
+  if (v == null) return defaultValue;
+  if (v is double) return v;
+  if (v is num) return v.toDouble();
+  return double.tryParse(v.toString()) ?? defaultValue;
+}
+
+int? _readIntOrNull(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  if (v is num) return v.round();
+  return int.tryParse(v.toString());
+}
+
 // ── User ─────────────────────────────────────────────────────────
 class UserModel {
   final String id;
@@ -83,9 +104,7 @@ class DriverProfile {
         isAvailable: j['isAvailable'] != false,
         rating:
             (j['rating'] ?? 5.0) is num ? (j['rating'] ?? 5.0).toDouble() : 5.0,
-        totalTrips: (j['totalTrips'] ?? 0) is int
-            ? j['totalTrips'] as int
-            : int.tryParse(j['totalTrips'].toString()) ?? 0,
+        totalTrips: _readInt(j['totalTrips'], 0),
         rejectionReason: j['rejectionReason']?.toString(),
       );
 
@@ -133,6 +152,10 @@ class BookingModel {
   final int nearbyDriversCount;
   final DateTime? createdAt;
   final int? customerRating;
+  /// Movezy commission (INR) included in [estimatedFare] split.
+  final int? platformFee;
+  /// Amount driver receives for this trip (after platform fee).
+  final int? driverPayout;
 
   const BookingModel({
     required this.id,
@@ -152,6 +175,8 @@ class BookingModel {
     this.nearbyDriversCount = 0,
     this.createdAt,
     this.customerRating,
+    this.platformFee,
+    this.driverPayout,
   });
 
   factory BookingModel.fromJson(Map<String, dynamic> j) {
@@ -185,22 +210,30 @@ class BookingModel {
           : null,
       description: j['description']?.toString(),
       status: (j['status'] ?? 'searching').toString(),
-      estimatedFare: (j['estimatedFare'] ?? 0) is num
-          ? (j['estimatedFare'] as num).toInt()
-          : 0,
-      estimatedDistance: (j['estimatedDistance'] ?? 0) is num
-          ? (j['estimatedDistance'] as num).toDouble()
-          : 0.0,
+      estimatedFare: _readInt(j['estimatedFare'], 0),
+      estimatedDistance: _readDouble(j['estimatedDistance']),
       driver: driver,
-      nearbyDriversCount: (j['nearbyDriversCount'] ?? 0) is int
-          ? j['nearbyDriversCount'] as int
-          : 0,
+      nearbyDriversCount: _readInt(j['nearbyDriversCount'], 0),
       createdAt: j['createdAt'] != null
           ? DateTime.tryParse(j['createdAt'].toString())
           : null,
-      customerRating:
-          j['customerRating'] is int ? j['customerRating'] as int : null,
+      customerRating: _readIntOrNull(j['customerRating']),
+      platformFee: _readIntOrNull(j['platformFee']),
+      driverPayout: _readIntOrNull(j['driverPayout']),
     );
+  }
+
+  /// Customer-facing total (same as [estimatedFare]).
+  int get customerPaysInr => estimatedFare;
+
+  /// Driver-side earning; uses API fields when present, else ~10% platform assumption.
+  int get driverEarnsInr {
+    if (driverPayout != null) return driverPayout!;
+    final fee = platformFee;
+    if (fee != null) {
+      return (estimatedFare - fee).clamp(0, estimatedFare);
+    }
+    return (estimatedFare * 0.9).round();
   }
 
   bool get isSearching => status == 'searching';
@@ -226,7 +259,7 @@ class BookingModel {
   String get statusLabel {
     switch (status) {
       case 'searching':
-        return 'Finding Driver';
+        return 'Waiting for a driver';
       case 'accepted':
         return 'Driver Accepted';
       case 'driver_arriving':

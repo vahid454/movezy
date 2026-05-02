@@ -43,6 +43,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   String? _locationNotice;
   final _api = ApiService();
   Map<String, BitmapDescriptor> _vehicleBmps = {};
+  Map<String, BitmapDescriptor> _vehicleBmpsCompact = {};
 
   @override
   void initState() {
@@ -87,14 +88,46 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     try {
       await VehicleMapIcons.preloadAll();
       final m = <String, BitmapDescriptor>{};
+      final compact = <String, BitmapDescriptor>{};
       for (final v in kVehicles) {
         m[v.type] = await VehicleMapIcons.forVehicleType(v.type);
+        compact[v.type] = await VehicleMapIcons.forVehicleType(
+          v.type,
+          logicalSide: VehicleMapIcons.kLogicalSideCompact,
+        );
       }
       if (mounted) {
-        setState(() => _vehicleBmps = m);
+        setState(() {
+          _vehicleBmps = m;
+          _vehicleBmpsCompact = compact;
+        });
         _refreshMapOverlay();
       }
     } catch (_) {}
+  }
+
+  BitmapDescriptor? _compactVehicleIcon(String? vehicleType) {
+    final t = (vehicleType ?? '').trim();
+    if (t.isNotEmpty && _vehicleBmpsCompact[t] != null) {
+      return _vehicleBmpsCompact[t];
+    }
+    return _vehicleBmpsCompact['auto'] ?? _vehicleBmps['auto'];
+  }
+
+  String _assignedDriverMarkerTitle(BookingModel? b) {
+    if (b == null) return 'Your driver';
+    if (b.isInProgress) return 'En route to drop-off';
+    if (b.status == 'driver_arriving') return 'Almost at pickup';
+    if (b.isAccepted) return 'On the way to you';
+    return 'Your driver';
+  }
+
+  String _assignedDriverMarkerSnippet(BookingModel? b, DriverProfile? d) {
+    const motion = 'Live on map — updates as they drive';
+    if (d != null && d.name.isNotEmpty) {
+      return '${d.name} · ${d.vehicleNumber} · $motion';
+    }
+    return motion;
   }
 
   Future<void> _initLoc() async {
@@ -167,7 +200,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       final lat = (data['latitude'] as num?)?.toDouble();
       final lng = (data['longitude'] as num?)?.toDouble();
       if (lat != null && lng != null) {
-        _updateDriverLocation(lat, lng, fitCamera: true);
+        // Keep the map stable while the pin animates; customer sees movement on the map.
+        _updateDriverLocation(lat, lng, fitCamera: false);
       }
     });
 
@@ -324,18 +358,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     }
     if (_driverLatLng != null) {
       final d = booking?.driver;
+      final vehicleIcon = _compactVehicleIcon(d?.vehicleType);
+      final useVehicle = vehicleIcon != null;
       nextMarkers.add(
         Marker(
           markerId: const MarkerId('driver'),
           position: _driverLatLng!,
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueYellow,
-          ),
+          anchor: useVehicle ? const Offset(0.5, 0.5) : const Offset(0.5, 1.0),
+          icon: vehicleIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueYellow,
+              ),
           infoWindow: InfoWindow(
-            title: 'Your driver',
-            snippet: d != null && d.name.isNotEmpty
-                ? '${d.name} · ${d.vehicleNumber}'
-                : 'Tap for name & phone',
+            title: _assignedDriverMarkerTitle(booking),
+            snippet: _assignedDriverMarkerSnippet(booking, d),
           ),
           onTap: () {
             if (d != null) {
@@ -354,13 +390,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         if (lat == null || lng == null || lat == 0 || lng == 0) continue;
         final vLabel = vehicleByType(driver.vehicleType)?.name ??
             driver.vehicleType.replaceAll('_', ' ');
+        final compactNearby = _compactVehicleIcon(driver.vehicleType);
+        final fullNearby = _vehicleBmps[driver.vehicleType];
+        final nearbyIcon = compactNearby ??
+            fullNearby ??
+            BitmapDescriptor.defaultMarkerWithHue(
+                _markerHueForVehicle(driver.vehicleType));
+        final useCenterAnchor = compactNearby != null || fullNearby != null;
         nextMarkers.add(
           Marker(
             markerId: MarkerId('nearby_${driver.id}'),
             position: LatLng(lat, lng),
-            icon: _vehicleBmps[driver.vehicleType] ??
-                BitmapDescriptor.defaultMarkerWithHue(
-                    _markerHueForVehicle(driver.vehicleType)),
+            anchor:
+                useCenterAnchor ? const Offset(0.5, 0.5) : const Offset(0.5, 1.0),
+            icon: nearbyIcon,
             infoWindow: InfoWindow(
               title: '${vLabel.toUpperCase()} · ${driver.vehicleNumber}',
               snippet: driver.name.isNotEmpty
@@ -803,6 +846,21 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         accent: AppColors.warning,
       );
     }
+    final liveBooking = _activeBooking;
+    if (liveBooking != null &&
+        _driverLatLng != null &&
+        liveBooking.driver != null &&
+        !liveBooking.isSearching) {
+      final toDrop = liveBooking.isInProgress;
+      return InlineNoticeCard(
+        icon: Icons.local_shipping_outlined,
+        title: toDrop ? 'Driver is on the way to drop-off' : 'Driver is on the way to you',
+        subtitle: toDrop
+            ? 'Watch the smaller vehicle pin move on the map — the dashed line points toward your drop-off as they drive.'
+            : 'Watch the smaller vehicle pin move on the map — the dashed line shows how far they are from pickup.',
+        accent: AppColors.primary,
+      );
+    }
     if (_activeBooking == null && _pos != null && _nearbyDrivers.isEmpty) {
       return const InlineNoticeCard(
         icon: Icons.radar_outlined,
@@ -889,6 +947,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                               'Hey, ${user?.name.split(' ').firstOrNull ?? 'there'} 👋',
                           subtitle: _activeBooking != null
                               ? '${_activeBooking!.statusLabel} · ${_activeBooking!.displayBookingId}'
+                                  '${_driverLatLng != null && _activeBooking!.driver != null ? ' · Live on map' : ''}'
                               : 'Live map and quick booking',
                           accent: _activeBooking != null
                               ? 'Active booking'
@@ -946,11 +1005,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         ),
                       InfoPill(
                         icon: Icons.directions_car_filled_outlined,
-                        label: _driverPhone != null
-                            ? 'Driver assigned'
-                            : _activeBooking != null
-                                ? 'Finding driver'
-                                : 'Tap book to start',
+                        label: _driverLatLng != null &&
+                                _activeBooking?.driver != null
+                            ? (_activeBooking!.isInProgress
+                                ? 'Live · heading to drop-off'
+                                : 'Live · driver approaching')
+                            : _driverPhone != null
+                                ? 'Driver assigned'
+                                : _activeBooking != null
+                                    ? 'Waiting for a driver'
+                                    : 'Tap book to start',
                       ),
                     ],
                   ),
@@ -1186,7 +1250,9 @@ class _ActivePanel extends StatelessWidget {
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary)),
-                Text('${booking.displayBookingId} · ₹${booking.estimatedFare}',
+                Text(
+                    '${booking.displayBookingId} · You pay ₹${booking.customerPaysInr}'
+                    '${booking.platformFee != null ? ' (incl. fee ₹${booking.platformFee})' : ''}',
                     style: const TextStyle(
                         fontSize: 12, color: AppColors.textSecondary)),
               ],

@@ -12,6 +12,7 @@ const { sendPushNotification } = require('../utils/notifications');
 const { BOOKING_STATUSES, enforceTransitionOrBypass } = require('../utils/bookingPolicy');
 const { IDEMPOTENCY_ENABLED, getIdempotencyKey } = require('../utils/idempotency');
 const { logAuditEvent } = require('../utils/auditLogger');
+const { attachFareSplit } = require('../utils/fareCommission');
 
 const getDistanceKm = (lat1, lon1, lat2, lon2) => {
   const R = 6371;
@@ -187,7 +188,12 @@ router.post('/respond-booking', authenticate, requireRole('driver'), async (req,
       && booking.driver.toString() === driver._id.toString()
       && booking.status === BOOKING_STATUSES.ACCEPTED
     ) {
-      return res.status(200).json({ success: true, message: 'Booking already accepted', booking, idempotentReplay: true });
+      return res.status(200).json({
+        success: true,
+        message: 'Booking already accepted',
+        booking: attachFareSplit(booking.toObject({ flattenMaps: true })),
+        idempotentReplay: true
+      });
     }
     if (booking.status !== BOOKING_STATUSES.SEARCHING) return res.status(404).json({ error: 'Booking not available' });
 
@@ -246,7 +252,11 @@ router.post('/respond-booking', authenticate, requireRole('driver'), async (req,
       });
     }
 
-    res.json({ success: true, message: 'Booking accepted', booking });
+    res.json({
+      success: true,
+      message: 'Booking accepted',
+      booking: attachFareSplit(booking.toObject({ flattenMaps: true }))
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -356,7 +366,7 @@ router.get('/nearby-open-bookings', authenticate, requireRole('driver'), async (
       status: BOOKING_STATUSES.SEARCHING,
       $or: [{ driver: { $exists: false } }, { driver: null }]
     })
-      .select('bookingId vehicleType pickup dropoff estimatedFare estimatedDistance description createdAt rejectedByDrivers')
+      .select('bookingId vehicleType pickup dropoff estimatedFare estimatedDistance platformFee driverPayout description createdAt rejectedByDrivers')
       .populate('customer', 'name')
       .sort({ createdAt: -1 })
       .limit(120)
@@ -374,6 +384,11 @@ router.get('/nearby-open-bookings', authenticate, requireRole('driver'), async (
       if (km > maxKm) continue;
       const rejected = (b.rejectedByDrivers || []).map((id) => id.toString());
       if (rejected.includes(driverIdStr)) continue;
+      const fare = attachFareSplit({
+        estimatedFare: b.estimatedFare,
+        platformFee: b.platformFee,
+        driverPayout: b.driverPayout
+      });
       offers.push({
         id: b._id.toString(),
         bookingId: b.bookingId,
@@ -382,7 +397,9 @@ router.get('/nearby-open-bookings', authenticate, requireRole('driver'), async (
         dropoffAddress: b.dropoff?.address || '',
         pickupLat: pLat,
         pickupLng: pLng,
-        estimatedFare: b.estimatedFare,
+        estimatedFare: fare.estimatedFare,
+        platformFee: fare.platformFee,
+        driverPayout: fare.driverPayout,
         estimatedDistance: b.estimatedDistance,
         description: b.description || '',
         distanceKm: Math.round(km * 10) / 10,

@@ -25,7 +25,9 @@ const bookingSchema = new mongoose.Schema({
   },
   description: { type: String }, // What needs to be transported
   estimatedDistance: { type: Number }, // in km
-  estimatedFare: { type: Number },   // in INR
+  estimatedFare: { type: Number },   // in INR — customer pays this total
+  platformFee: { type: Number },     // Movezy commission (INR) slice of estimatedFare
+  driverPayout: { type: Number },    // estimatedFare - platformFee
   status: {
     type: String,
     enum: [

@@ -3,6 +3,7 @@ const router = express.Router();
 const Booking = require('../models/Booking');
 const Driver = require('../models/Driver');
 const { authenticate } = require('../middleware/auth');
+const { attachFareSplit } = require('../utils/fareCommission');
 const { canAccessBooking, STRICT_POLICY_ENABLED } = require('../utils/bookingPolicy');
 
 const toCoordinate = (value, min, max) => {
@@ -175,7 +176,10 @@ router.get('/:id/status', authenticate, async (req, res) => {
       if (!hasAccess) return res.status(403).json({ error: 'Forbidden: cannot access this booking' });
     }
 
-    res.json({ success: true, booking });
+    res.json({
+      success: true,
+      booking: attachFareSplit(booking.toObject({ flattenMaps: true }))
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -192,7 +196,13 @@ router.get('/driver/active', authenticate, async (req, res) => {
       status: { $in: ['accepted', 'driver_arriving', 'in_progress'] }
     }).populate('customer', 'name phone location');
 
-    res.json({ success: true, booking });
+    if (!booking) {
+      return res.json({ success: true, booking: null });
+    }
+    res.json({
+      success: true,
+      booking: attachFareSplit(booking.toObject({ flattenMaps: true }))
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

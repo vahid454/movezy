@@ -40,6 +40,8 @@ class _BookingScreenState extends State<BookingScreen> {
   bool _loadingFareQuote = false;
   double? _distanceKm;
   int? _serverEstimatedFare;
+  int? _quotePlatformFee;
+  int? _quoteDriverPayout;
   String? _dropLookupMessage;
   List<NearbyDriver> _nearbyDrivers = const [];
   Timer? _dropDebounce;
@@ -125,6 +127,9 @@ class _BookingScreenState extends State<BookingScreen> {
           _dropLat = 0;
           _dropLng = 0;
           _distanceKm = null;
+          _serverEstimatedFare = null;
+          _quotePlatformFee = null;
+          _quoteDriverPayout = null;
           _dropLookupMessage = null;
           _roadRoutePath = const [];
           _routeKey = null;
@@ -167,6 +172,9 @@ class _BookingScreenState extends State<BookingScreen> {
         _dropLat = 0;
         _dropLng = 0;
         _distanceKm = null;
+        _serverEstimatedFare = null;
+        _quotePlatformFee = null;
+        _quoteDriverPayout = null;
         _dropLookupMessage = 'Enter a more specific drop address';
       });
       _refreshMapPreview();
@@ -181,8 +189,11 @@ class _BookingScreenState extends State<BookingScreen> {
       _dropLat = 0;
       _dropLng = 0;
       _distanceKm = null;
-        _roadRoutePath = const [];
-        _routeKey = null;
+      _serverEstimatedFare = null;
+      _quotePlatformFee = null;
+      _quoteDriverPayout = null;
+      _roadRoutePath = const [];
+      _routeKey = null;
     });
     _refreshMapPreview();
     _dropDebounce = Timer(const Duration(milliseconds: 650), () {
@@ -291,16 +302,20 @@ class _BookingScreenState extends State<BookingScreen> {
           geodesic: true,
         ),
       );
-      _distanceKm = Geolocator.distanceBetween(
-            _pickupLat,
-            _pickupLng,
-            _dropLat,
-            _dropLng,
-          ) /
-          1000;
+      if (_serverEstimatedFare == null) {
+        _distanceKm = Geolocator.distanceBetween(
+              _pickupLat,
+              _pickupLng,
+              _dropLat,
+              _dropLng,
+            ) /
+            1000;
+      }
     } else {
       _distanceKm = null;
       _serverEstimatedFare = null;
+      _quotePlatformFee = null;
+      _quoteDriverPayout = null;
     }
 
     setState(() {
@@ -553,7 +568,10 @@ class _BookingScreenState extends State<BookingScreen> {
       if (!mounted) return;
       setState(() {
         _serverEstimatedFare = (quote['estimatedFare'] as num?)?.toInt();
-        _distanceKm = (quote['estimatedDistance'] as num?)?.toDouble() ?? _distanceKm;
+        _quotePlatformFee = (quote['platformFee'] as num?)?.toInt();
+        _quoteDriverPayout = (quote['driverPayout'] as num?)?.toInt();
+        _distanceKm =
+            (quote['estimatedDistance'] as num?)?.toDouble() ?? _distanceKm;
       });
     } catch (_) {
       // fallback to local estimate
@@ -563,12 +581,16 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   Future<bool> _confirmBooking() async {
+    final fee = _estimateFare();
+    final feeNote = (_quotePlatformFee != null && _quoteDriverPayout != null)
+        ? '\nIncludes Movezy service fee ₹$_quotePlatformFee (driver earns ~₹$_quoteDriverPayout).'
+        : '';
     return await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Confirm booking'),
             content: Text(
-              'Vehicle: ${_selected.name}\nEstimated fare: ₹${_estimateFare()}\n\nProceed with this booking?',
+              'Vehicle: ${_selected.name}\nYou pay: ₹$fee$feeNote\n\nProceed with this booking?',
             ),
             actions: [
               TextButton(
@@ -622,7 +644,8 @@ class _BookingScreenState extends State<BookingScreen> {
         context,
         '✅ Booking ${booking.displayBookingId} created! Finding drivers…',
       );
-      context.pop();
+      if (!mounted) return;
+      context.go(AppRoutes.customerHome);
     } on DioException catch (e) {
       if (!mounted) return;
       final msg =
@@ -856,6 +879,8 @@ class _BookingScreenState extends State<BookingScreen> {
                           setState(() {
                             _selected = v;
                             _serverEstimatedFare = null;
+                            _quotePlatformFee = null;
+                            _quoteDriverPayout = null;
                           });
                           _loadNearbyDrivers();
                           _fetchFareQuote();
@@ -948,6 +973,9 @@ class _BookingScreenState extends State<BookingScreen> {
                   _FareBreakupCard(
                     selectedVehicle: _selected,
                     distanceKm: _distanceKm,
+                    serverTotal: _serverEstimatedFare,
+                    serverPlatformFee: _quotePlatformFee,
+                    serverDriverPayout: _quoteDriverPayout,
                   ),
                 ],
               ),
@@ -1026,7 +1054,9 @@ class _BookingScreenState extends State<BookingScreen> {
               Expanded(
                 child: Text(
                   _distanceKm != null
-                      ? 'Estimated fare for ${_distanceKm!.toStringAsFixed(1)} km. Final amount can still be confirmed with the driver.'
+                      ? (_serverEstimatedFare != null
+                          ? 'Fare matches the server quote for ${_distanceKm!.toStringAsFixed(1)} km straight-line between pins (map route may differ).'
+                          : 'Estimated fare for ${_distanceKm!.toStringAsFixed(1)} km. Final amount can still be confirmed with the driver.')
                       : 'Add a clear drop-off address to calculate distance and route before booking.',
                   style:
                       const TextStyle(fontSize: 12, color: AppColors.textMuted),
@@ -1124,29 +1154,36 @@ class _LocRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
-              TextField(
-                controller: ctrl,
-                onChanged: onChanged,
-                minLines: 1,
-                maxLines: 4,
-                keyboardType: TextInputType.multiline,
-                textInputAction: TextInputAction.newline,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  height: 1.35,
-                ),
-                decoration: InputDecoration(
-                  hintText: hint,
-                  hintStyle: const TextStyle(
-                    color: AppColors.textMuted,
+              SizedBox(
+                height: 104,
+                width: double.infinity,
+                child: TextField(
+                  controller: ctrl,
+                  onChanged: onChanged,
+                  maxLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.top,
+                  keyboardType: TextInputType.streetAddress,
+                  textCapitalization: TextCapitalization.sentences,
+                  textInputAction: TextInputAction.newline,
+                  scrollPhysics: const BouncingScrollPhysics(),
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
                     fontSize: 14,
+                    fontWeight: FontWeight.w500,
                     height: 1.35,
                   ),
-                  isDense: true,
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
+                  decoration: InputDecoration(
+                    hintText: hint,
+                    hintStyle: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 14,
+                      height: 1.35,
+                    ),
+                    isDense: true,
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
                 ),
               ),
             ],
@@ -1217,24 +1254,37 @@ class _MapPinModeChip extends StatelessWidget {
 class _FareBreakupCard extends StatelessWidget {
   final VehicleOption selectedVehicle;
   final double? distanceKm;
+  final int? serverTotal;
+  final int? serverPlatformFee;
+  final int? serverDriverPayout;
 
   const _FareBreakupCard({
     required this.selectedVehicle,
     required this.distanceKm,
+    this.serverTotal,
+    this.serverPlatformFee,
+    this.serverDriverPayout,
   });
 
   @override
   Widget build(BuildContext context) {
     final distance = distanceKm ?? 0;
-    final baseDistanceFare = selectedVehicle.baseFare + (selectedVehicle.perKm * distance);
-    final longDistanceSurcharge = distance > 10 ? (distance - 10) * (selectedVehicle.perKm * 0.2) : 0;
-    final bookingFee = 10;
+    final baseDistanceFare =
+        selectedVehicle.baseFare + (selectedVehicle.perKm * distance);
+    final longDistanceSurcharge =
+        distance > 10 ? (distance - 10) * (selectedVehicle.perKm * 0.2) : 0;
+    const bookingFee = 10;
     final currentHour = DateTime.now().hour;
-    final isPeakHour = (currentHour >= 8 && currentHour <= 11) || (currentHour >= 17 && currentHour <= 21);
+    final isPeakHour = (currentHour >= 8 && currentHour <= 11) ||
+        (currentHour >= 17 && currentHour <= 21);
     final peakMultiplier = isPeakHour ? 1.2 : 1.0;
     final subtotal = baseDistanceFare + longDistanceSurcharge + bookingFee;
     final totalFare = (subtotal * peakMultiplier).round();
-    final finalEstimate = totalFare < selectedVehicle.minFare ? selectedVehicle.minFare : totalFare;
+    final localEstimate =
+        totalFare < selectedVehicle.minFare ? selectedVehicle.minFare : totalFare;
+
+    final useServer = serverTotal != null;
+    final titleAmount = useServer ? serverTotal! : localEstimate;
 
     return Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -1250,7 +1300,9 @@ class _FareBreakupCard extends StatelessWidget {
           iconColor: AppColors.primary,
           collapsedIconColor: AppColors.textSecondary,
           title: Text(
-            'Fare breakup (₹$finalEstimate)',
+            useServer
+                ? 'Fare breakup (you pay ₹$titleAmount)'
+                : 'Fare breakup (₹$titleAmount est.)',
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -1260,20 +1312,64 @@ class _FareBreakupCard extends StatelessWidget {
           subtitle: Text(
             distanceKm == null
                 ? 'Set drop pin for precise fare'
-                : '${distance.toStringAsFixed(1)} km · ${selectedVehicle.name}',
+                : '${distance.toStringAsFixed(1)} km · ${selectedVehicle.name}'
+                    '${useServer ? ' · priced on route pins' : ''}',
             style: const TextStyle(
               fontSize: 11,
               color: AppColors.textSecondary,
             ),
           ),
-          children: [
-            _FareRow(label: 'Base fare', value: selectedVehicle.baseFare),
-            _FareRow(label: 'Distance charge', value: (selectedVehicle.perKm * distance).round()),
-            _FareRow(label: 'Long distance surcharge', value: longDistanceSurcharge.round()),
-            _FareRow(label: 'Platform fee', value: bookingFee),
-            _FareRow(label: isPeakHour ? 'Peak multiplier (1.2x)' : 'Peak multiplier (1.0x)', value: (subtotal * peakMultiplier).round()),
-            _FareRow(label: 'Minimum fare applied', value: selectedVehicle.minFare, muted: true),
-          ],
+          children: useServer &&
+                  serverPlatformFee != null &&
+                  serverDriverPayout != null
+              ? [
+                  _FareRow(label: 'You pay (total)', value: serverTotal!),
+                  _FareRow(
+                      label: 'Movezy service fee',
+                      value: serverPlatformFee!),
+                  _FareRow(
+                      label: 'Driver earns (approx.)',
+                      value: serverDriverPayout!),
+                  const Padding(
+                    padding: EdgeInsets.only(top: 6),
+                    child: Text(
+                      'Same formula is used when you confirm — distance is straight-line between pickup and drop pins.',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: AppColors.textMuted,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ]
+              : useServer
+                  ? [
+                      _FareRow(label: 'You pay (total)', value: serverTotal!),
+                      _FareRow(
+                        label: 'Driver earns (approx.)',
+                        value: serverDriverPayout ??
+                            (serverTotal! * 0.9).round(),
+                      ),
+                    ]
+                  : [
+                  _FareRow(label: 'Base fare', value: selectedVehicle.baseFare),
+                  _FareRow(
+                      label: 'Distance charge',
+                      value: (selectedVehicle.perKm * distance).round()),
+                  _FareRow(
+                      label: 'Long distance surcharge',
+                      value: longDistanceSurcharge.round()),
+                  _FareRow(label: 'Platform fee', value: bookingFee),
+                  _FareRow(
+                      label: isPeakHour
+                          ? 'After peak multiplier (1.2x)'
+                          : 'After peak multiplier (1.0x)',
+                      value: (subtotal * peakMultiplier).round()),
+                  _FareRow(
+                      label: 'Minimum fare floor',
+                      value: selectedVehicle.minFare,
+                      muted: true),
+                    ],
         ),
       ),
     );

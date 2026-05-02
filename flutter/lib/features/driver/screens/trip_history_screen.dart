@@ -42,7 +42,7 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
   int get _totalTrips => _trips.where((t) => t.isCompleted).length;
 
   int get _totalEarnings =>
-      _trips.where((t) => t.isCompleted).fold(0, (s, t) => s + t.estimatedFare);
+      _trips.where((t) => t.isCompleted).fold(0, (s, t) => s + t.driverEarnsInr);
 
   @override
   Widget build(BuildContext context) {
@@ -207,11 +207,19 @@ class _TripCard extends StatelessWidget {
                 style: const TextStyle(
                     fontSize: 12, color: AppColors.textSecondary)),
             const Spacer(),
-            Text('₹${trip.estimatedFare}',
-                style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.primary)),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('₹${trip.driverEarnsInr}',
+                    style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primary)),
+                Text('customer ₹${trip.customerPaysInr}',
+                    style: const TextStyle(
+                        fontSize: 10, color: AppColors.textMuted)),
+              ],
+            ),
           ]),
         ],
       ),

@@ -9,6 +9,7 @@ const { sendMulticastNotification } = require('../utils/notifications');
 const { BOOKING_STATUSES, enforceTransitionOrBypass } = require('../utils/bookingPolicy');
 const { IDEMPOTENCY_ENABLED, getIdempotencyKey } = require('../utils/idempotency');
 const { logAuditEvent } = require('../utils/auditLogger');
+const { splitCustomerFare, attachFareSplit } = require('../utils/fareCommission');
 
 const VEHICLE_FARE_CONFIG = {
   bike: { baseFare: 20, perKm: 8, minFare: 35 },
@@ -114,10 +115,13 @@ router.get('/fare-quote', authenticate, requireRole('customer'), async (req, res
     }
     const distanceKm = getDistance(originLat, originLng, destinationLat, destinationLng);
     const estimatedFare = estimateFare(distanceKm, vehicleType);
+    const { platformFee, driverPayout } = splitCustomerFare(estimatedFare);
     return res.json({
       success: true,
       estimatedFare,
-      estimatedDistance: Math.round(distanceKm * 10) / 10
+      estimatedDistance: Math.round(distanceKm * 10) / 10,
+      platformFee,
+      driverPayout
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -148,6 +152,7 @@ router.post('/create-booking', authenticate, requireRole('customer'), async (req
     );
     const estimatedFare = estimateFare(distanceKm, vehicleType);
     if (estimatedFare === null) return res.status(400).json({ error: 'Unable to estimate fare' });
+    const { platformFee, driverPayout } = splitCustomerFare(estimatedFare);
 
     if (IDEMPOTENCY_ENABLED && idempotencyKey) {
       const existingBooking = await Booking.findOne({
@@ -155,6 +160,7 @@ router.post('/create-booking', authenticate, requireRole('customer'), async (req
         createBookingIdempotencyKey: idempotencyKey
       });
       if (existingBooking) {
+        const sp = splitCustomerFare(existingBooking.estimatedFare);
         return res.status(200).json({
           success: true,
           booking: {
@@ -163,7 +169,9 @@ router.post('/create-booking', authenticate, requireRole('customer'), async (req
             status: existingBooking.status,
             estimatedFare: existingBooking.estimatedFare,
             estimatedDistance: existingBooking.estimatedDistance,
-            nearbyDriversCount: existingBooking.notifiedDrivers?.length || 0
+            nearbyDriversCount: existingBooking.notifiedDrivers?.length || 0,
+            platformFee: existingBooking.platformFee ?? sp.platformFee,
+            driverPayout: existingBooking.driverPayout ?? sp.driverPayout
           },
           idempotentReplay: true
         });
@@ -187,6 +195,8 @@ router.post('/create-booking', authenticate, requireRole('customer'), async (req
         description,
         estimatedDistance: Math.round(distanceKm * 10) / 10,
         estimatedFare,
+        platformFee,
+        driverPayout,
         createBookingIdempotencyKey: idempotencyKey || undefined
       });
     } catch (createError) {
@@ -196,6 +206,7 @@ router.post('/create-booking', authenticate, requireRole('customer'), async (req
           createBookingIdempotencyKey: idempotencyKey
         });
         if (replayBooking) {
+          const sp = splitCustomerFare(replayBooking.estimatedFare);
           return res.status(200).json({
             success: true,
             booking: {
@@ -204,7 +215,9 @@ router.post('/create-booking', authenticate, requireRole('customer'), async (req
               status: replayBooking.status,
               estimatedFare: replayBooking.estimatedFare,
               estimatedDistance: replayBooking.estimatedDistance,
-              nearbyDriversCount: replayBooking.notifiedDrivers?.length || 0
+              nearbyDriversCount: replayBooking.notifiedDrivers?.length || 0,
+              platformFee: replayBooking.platformFee ?? sp.platformFee,
+              driverPayout: replayBooking.driverPayout ?? sp.driverPayout
             },
             idempotentReplay: true
           });
@@ -261,7 +274,9 @@ router.post('/create-booking', authenticate, requireRole('customer'), async (req
           dropoff: normalizedDropoff,
           description,
           estimatedDistance: booking.estimatedDistance,
-          estimatedFare
+          estimatedFare,
+          platformFee,
+          driverPayout
         });
       }
     }
@@ -274,7 +289,9 @@ router.post('/create-booking', authenticate, requireRole('customer'), async (req
         status: booking.status,
         estimatedFare,
         estimatedDistance: booking.estimatedDistance,
-        nearbyDriversCount: nearbyDrivers.length
+        nearbyDriversCount: nearbyDrivers.length,
+        platformFee,
+        driverPayout
       }
     });
   } catch (err) {
@@ -421,7 +438,13 @@ router.get('/active-booking', authenticate, requireRole('customer'), async (req,
       customer: req.userId,
       status: { $in: ['searching', 'accepted', 'driver_arriving', 'in_progress'] }
     }).populate({ path: 'driver', populate: { path: 'user', select: 'name phone' } });
-    res.json({ success: true, booking });
+    if (!booking) {
+      return res.json({ success: true, booking: null });
+    }
+    res.json({
+      success: true,
+      booking: attachFareSplit(booking.toObject({ flattenMaps: true }))
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
