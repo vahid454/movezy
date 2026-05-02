@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -43,6 +44,29 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   Map<String, BitmapDescriptor> _vehicleBmps = {};
   List<Map<String, dynamic>> _openNearby = const [];
   Timer? _openBookingsPoll;
+
+  /// Match server default `COMPLETE_TRIP_MAX_DROP_DISTANCE_M` (meters).
+  static const double _kCompleteDropMaxM = 450;
+
+  double? get _metersToDropOff {
+    final b = _activeBooking;
+    final p = _pos;
+    final d = b?.dropoff;
+    if (p == null || d == null) return null;
+    if (d.latitude == 0 && d.longitude == 0) return null;
+    return Geolocator.distanceBetween(
+      p.latitude,
+      p.longitude,
+      d.latitude,
+      d.longitude,
+    );
+  }
+
+  bool get _canCompleteNearDrop {
+    final m = _metersToDropOff;
+    if (m == null) return false;
+    return m <= _kCompleteDropMaxM;
+  }
 
   @override
   void initState() {
@@ -670,6 +694,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       _refreshMapOverlay(fitCamera: true);
       _syncOpenBookingsPoll();
       showSnack(context, '✅ Trip completed!');
+    } on DioException catch (e) {
+      if (!mounted) return;
+      final msg = (e.response?.data as Map?)?['error']?.toString() ??
+          'Failed to complete trip';
+      showSnack(context, msg, error: true);
     } catch (_) {
       if (mounted) {
         showSnack(context, 'Failed to complete', error: true);
@@ -1165,6 +1194,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     customerPhone: _customerPhone,
                     onStart: _startTrip,
                     onComplete: _completeTrip,
+                    canCompleteNearDrop: _canCompleteNearDrop,
+                    metersToDrop: _metersToDropOff,
+                    maxCompleteDropM: _kCompleteDropMaxM,
                   )
                 : _IdlePanel(
                     isOnline: _isOnline,
@@ -1445,12 +1477,18 @@ class _TripPanel extends StatelessWidget {
   final String? customerPhone;
   final VoidCallback onStart;
   final VoidCallback onComplete;
+  final bool canCompleteNearDrop;
+  final double? metersToDrop;
+  final double maxCompleteDropM;
 
   const _TripPanel({
     required this.booking,
     this.customerPhone,
     required this.onStart,
     required this.onComplete,
+    required this.canCompleteNearDrop,
+    required this.metersToDrop,
+    required this.maxCompleteDropM,
   });
 
   @override
@@ -1575,8 +1613,27 @@ class _TripPanel extends StatelessWidget {
               label: '🚀   Start Trip',
               onTap: onStart,
               color: AppColors.success)
-        else if (booking.isInProgress)
-          PrimaryButton(label: '✅   Complete Trip', onTap: onComplete),
+        else if (booking.isInProgress) ...[
+          if (!canCompleteNearDrop && metersToDrop != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(
+                'Move within ${maxCompleteDropM.round()} m of the drop pin to finish (${metersToDrop!.round()} m away).',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.warning,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          PrimaryButton(
+            label: '✅   Complete Trip',
+            onTap: canCompleteNearDrop ? onComplete : null,
+            color: AppColors.success,
+          ),
+        ],
       ]),
     );
   }

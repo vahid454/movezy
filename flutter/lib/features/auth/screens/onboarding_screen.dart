@@ -26,34 +26,34 @@ class _Page {
 
 const _pages = [
   _Page(
-    emoji: '📦',
-    title: 'Move Anything,\nAnywhere',
-    sub: 'Bikes to trucks — the right vehicle for every load.',
-    chip: 'Verified fleet · city-wide coverage',
-    chipIcon: Icons.verified_outlined,
+    emoji: '🚚',
+    title: 'Goods moved\ndoor to door',
+    sub: 'Parcels, furniture, appliances — book a bike, auto, or truck for the load you actually have.',
+    chip: 'Verified drivers · goods-focused fleet',
+    chipIcon: Icons.local_shipping_outlined,
     accent: AppColors.primary,
   ),
   _Page(
     emoji: '⚡',
-    title: 'Instant Driver\nMatching',
-    sub: 'Nearby approved drivers get your request in real time.',
-    chip: 'Live demand map · sub-minute matching',
+    title: 'Drivers matched\nin seconds',
+    sub: 'Nearby approved drivers see your request instantly and head your way.',
+    chip: 'Live map · quick dispatch',
     chipIcon: Icons.bolt_rounded,
     accent: Color(0xFFF59E0B),
   ),
   _Page(
-    emoji: '📍',
-    title: 'Live GPS\nTracking',
-    sub: 'Follow pickup → drop-off with a clear route on the map.',
-    chip: 'Turn-by-turn route · ETA you can trust',
+    emoji: '🗺️',
+    title: 'Watch every\npickup & drop',
+    sub: 'Follow your goods from collection to delivery with a live route on the map.',
+    chip: 'GPS tracking · clear ETAs',
     chipIcon: Icons.route_rounded,
     accent: Color(0xFF3B82F6),
   ),
   _Page(
-    emoji: '🤝',
-    title: 'Fair Fare,\nYour Way',
-    sub: 'Transparent estimates before you book. Confirm with your driver.',
-    chip: 'No surprise platform fees on small goods',
+    emoji: '💳',
+    title: 'Clear fare\nbefore you pay',
+    sub: 'See an upfront estimate, then confirm with your driver before the trip starts.',
+    chip: 'Transparent pricing · no shocks',
     chipIcon: Icons.payments_outlined,
     accent: Color(0xFF22C55E),
   ),
@@ -126,7 +126,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 child: Stack(
                   children: [
                     _FloatingVehicle(
-                      icon: Icons.two_wheeler_rounded,
+                      icon: Icons.inventory_2_rounded,
                       color: AppColors.success,
                       left: 26 + math.sin(t) * 12,
                       top: 138 + math.cos(t * 0.8) * 10,
@@ -140,7 +140,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       angle: -0.08 + math.cos(t) * 0.08,
                     ),
                     _FloatingVehicle(
-                      icon: Icons.electric_rickshaw_rounded,
+                      icon: Icons.fire_truck_rounded,
                       color: AppColors.info,
                       left: 34 + math.cos(t * 1.1) * 14,
                       bottom: 250 + math.sin(t * 0.9) * 10,

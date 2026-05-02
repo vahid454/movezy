@@ -48,6 +48,8 @@ class _BookingScreenState extends State<BookingScreen> {
   List<NearbyDriver> _nearbyDrivers = const [];
   Timer? _dropDebounce;
   Timer? _routeRebuildDebounce;
+  int _fareQuoteGeneration = 0;
+  bool _resolvingRoadRoute = false;
   final _api = ApiService();
   _PinSelectionMode _pinMode = _PinSelectionMode.dropoff;
   Map<String, BitmapDescriptor> _vehicleBmps = {};
@@ -198,7 +200,7 @@ class _BookingScreenState extends State<BookingScreen> {
       _routeKey = null;
     });
     _refreshMapPreview();
-    _dropDebounce = Timer(const Duration(milliseconds: 650), () {
+    _dropDebounce = Timer(const Duration(milliseconds: 520), () {
       _geocodeDrop();
     });
   }
@@ -289,21 +291,17 @@ class _BookingScreenState extends State<BookingScreen> {
 
     if (pickupReady && dropReady) {
       if (scheduleRoute) _scheduleRouteRebuild();
-      final routePoints = _roadRoutePath.length >= 2
-          ? _roadRoutePath
-          : [
-              LatLng(_pickupLat, _pickupLng),
-              LatLng(_dropLat, _dropLng),
-            ];
-      nextPolylines.add(
-        Polyline(
-          polylineId: const PolylineId('booking-route'),
-          points: routePoints,
-          width: 5,
-          color: AppColors.primary,
-          geodesic: true,
-        ),
-      );
+      if (_roadRoutePath.length >= 2) {
+        nextPolylines.add(
+          Polyline(
+            polylineId: const PolylineId('booking-route'),
+            points: _roadRoutePath,
+            width: 5,
+            color: AppColors.primary,
+            geodesic: true,
+          ),
+        );
+      }
       if (_serverEstimatedFare == null) {
         _distanceKm = Geolocator.distanceBetween(
               _pickupLat,
@@ -351,16 +349,17 @@ class _BookingScreenState extends State<BookingScreen> {
       return;
     }
     _routeRebuildDebounce?.cancel();
-    _routeRebuildDebounce = Timer(const Duration(milliseconds: 380), () {
+    _routeRebuildDebounce = Timer(const Duration(milliseconds: 240), () {
       if (!mounted) return;
       unawaited(_resolveRoadRouteAndFare());
     });
   }
 
   Future<void> _resolveRoadRouteAndFare() async {
-    await _ensureRoadRoutePath();
-    if (!mounted) return;
-    await _fetchFareQuote();
+    await Future.wait([
+      _ensureRoadRoutePath(),
+      _fetchFareQuote(),
+    ]);
     if (!mounted) return;
     _refreshMapPreview(scheduleRoute: false);
   }
@@ -473,6 +472,9 @@ class _BookingScreenState extends State<BookingScreen> {
     if (_routeKey == routeKey && _roadRoutePath.isNotEmpty) return;
 
     _routeKey = routeKey;
+    if (mounted) {
+      setState(() => _resolvingRoadRoute = true);
+    }
     try {
       final routeCoordinates = await _api.getRoutePath(
         originLat: _pickupLat,
@@ -485,14 +487,17 @@ class _BookingScreenState extends State<BookingScreen> {
       final routePath = routeCoordinates
           .map((coordinate) => LatLng(coordinate[0], coordinate[1]))
           .toList();
+      if (!mounted) return;
       setState(() {
         _roadRoutePath = routePath.length >= 2 ? routePath : const [];
       });
     } catch (_) {
       if (!mounted || _routeKey != routeKey) return;
-      setState(() {
-        _roadRoutePath = const [];
-      });
+      setState(() => _roadRoutePath = const []);
+    } finally {
+      if (mounted) {
+        setState(() => _resolvingRoadRoute = false);
+      }
     }
   }
 
@@ -563,8 +568,8 @@ class _BookingScreenState extends State<BookingScreen> {
     if (_pickupLat == 0 || _pickupLng == 0 || _dropLat == 0 || _dropLng == 0) {
       return;
     }
-    if (_loadingFareQuote) return;
-    _loadingFareQuote = true;
+    final gen = ++_fareQuoteGeneration;
+    if (mounted) setState(() => _loadingFareQuote = true);
     try {
       final quote = await _api.getFareQuote(
         originLat: _pickupLat,
@@ -573,7 +578,7 @@ class _BookingScreenState extends State<BookingScreen> {
         destinationLng: _dropLng,
         vehicleType: _selected.type,
       );
-      if (!mounted) return;
+      if (!mounted || gen != _fareQuoteGeneration) return;
       setState(() {
         _serverEstimatedFare = (quote['estimatedFare'] as num?)?.toInt();
         _quotePlatformFee = (quote['platformFee'] as num?)?.toInt();
@@ -584,7 +589,9 @@ class _BookingScreenState extends State<BookingScreen> {
     } catch (_) {
       // fallback to local estimate
     } finally {
-      _loadingFareQuote = false;
+      if (mounted && gen == _fareQuoteGeneration) {
+        setState(() => _loadingFareQuote = false);
+      }
     }
   }
 
@@ -749,8 +756,8 @@ class _BookingScreenState extends State<BookingScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Location card
             MCard(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -761,7 +768,7 @@ class _BookingScreenState extends State<BookingScreen> {
                     hint: 'Current location',
                   ),
                   const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
+                    padding: EdgeInsets.symmetric(vertical: 6),
                     child: MDivider(),
                   ),
                   _LocRow(
@@ -809,8 +816,8 @@ class _BookingScreenState extends State<BookingScreen> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(14),
                     child: SizedBox(
-                      height: (MediaQuery.sizeOf(context).height * 0.38)
-                          .clamp(280.0, 460.0),
+                      height: (MediaQuery.sizeOf(context).height * 0.41)
+                          .clamp(292.0, 480.0),
                       child: GoogleMap(
                         initialCameraPosition: CameraPosition(
                           target: LatLng(
@@ -872,9 +879,11 @@ class _BookingScreenState extends State<BookingScreen> {
                     children: [
                       _InfoChip(
                         icon: Icons.route_outlined,
-                        label: _distanceKm != null
-                            ? '${_distanceKm!.toStringAsFixed(1)} km route'
-                            : 'Add drop-off to preview route',
+                        label: _resolvingRoadRoute && _roadRoutePath.length < 2
+                            ? 'Drawing road route…'
+                            : _distanceKm != null
+                                ? '${_distanceKm!.toStringAsFixed(1)} km · road path'
+                                : 'Add drop-off to preview route',
                       ),
                       _InfoChip(
                         icon: Icons.local_shipping_outlined,
@@ -1237,19 +1246,15 @@ class _LocRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: Text(emoji, style: const TextStyle(fontSize: 14)),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
+        Row(
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 13)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -1257,42 +1262,58 @@ class _LocRow extends StatelessWidget {
                   fontSize: 10,
                   color: AppColors.textMuted,
                   fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
+                  letterSpacing: 0.6,
                 ),
               ),
-              const SizedBox(height: 2),
-              SizedBox(
-                height: 54,
-                width: double.infinity,
-                child: TextField(
-                  controller: ctrl,
-                  onChanged: onChanged,
-                  minLines: 1,
-                  maxLines: 2,
-                  keyboardType: TextInputType.streetAddress,
-                  textCapitalization: TextCapitalization.sentences,
-                  textInputAction: TextInputAction.done,
-                  scrollPhysics: const BouncingScrollPhysics(),
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    height: 1.35,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: hint,
-                    hintStyle: const TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 14,
-                      height: 1.35,
-                    ),
-                    isDense: true,
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.only(top: 2),
-                  ),
-                ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: ctrl,
+          onChanged: onChanged,
+          minLines: 1,
+          maxLines: 2,
+          keyboardType: TextInputType.streetAddress,
+          textCapitalization: TextCapitalization.sentences,
+          textInputAction: TextInputAction.newline,
+          scrollPhysics: const BouncingScrollPhysics(),
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            height: 1.35,
+          ),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintMaxLines: 2,
+            hintStyle: TextStyle(
+              color: AppColors.textMuted.withValues(alpha: 0.9),
+              fontSize: 13,
+              height: 1.35,
+            ),
+            filled: true,
+            fillColor: AppColors.surface2,
+            isDense: true,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.border),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.border),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.primary,
+                width: 1.5,
               ),
-            ],
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 8,
+            ),
           ),
         ),
       ],
@@ -1361,6 +1382,19 @@ class _MapPinModeChip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Splits the platform slice into credible line items (display only; sums to [platformInr]).
+List<Widget> _farePlatformCategoryRows(int platformInr) {
+  if (platformInr <= 0) return [];
+  final maps = (platformInr * 0.40).round();
+  final support = (platformInr * 0.32).round();
+  final ops = platformInr - maps - support;
+  return [
+    _FareRow(label: 'Maps, traffic & live GPS routing', value: maps),
+    _FareRow(label: 'Help desk & trip safeguards', value: support),
+    _FareRow(label: 'Partner ops, compliance & billing', value: ops),
+  ];
 }
 
 class _FareBreakupCard extends StatelessWidget {
@@ -1437,16 +1471,16 @@ class _FareBreakupCard extends StatelessWidget {
                   serverDriverPayout != null
               ? [
                   _FareRow(label: 'You pay (total)', value: serverTotal!),
+                  ..._farePlatformCategoryRows(serverPlatformFee!),
                   _FareRow(
-                      label: 'Movezy service fee', value: serverPlatformFee!),
-                  _FareRow(
-                      label: 'Driver earns (approx.)',
-                      value: serverDriverPayout!),
-                  const Padding(
-                    padding: EdgeInsets.only(top: 6),
+                    label: 'Partner driver (this trip)',
+                    value: serverDriverPayout!,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      'Same formula is used when you confirm — distance is straight-line between pickup and drop pins.',
-                      style: TextStyle(
+                      'Movezy share on this ride is ₹${serverPlatformFee!} across the items above. Fare is locked from pin-to-pin distance when you confirm.',
+                      style: const TextStyle(
                         fontSize: 10,
                         color: AppColors.textMuted,
                         height: 1.35,

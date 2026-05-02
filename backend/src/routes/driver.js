@@ -314,6 +314,29 @@ router.post('/complete-trip', authenticate, requireRole('driver'), async (req, r
       return res.status(403).json({ error: 'Not authorized' });
     }
 
+    const maxDropM = Number(process.env.COMPLETE_TRIP_MAX_DROP_DISTANCE_M || 450);
+    const dCoords = driver.location?.coordinates;
+    const dropCoords = booking.dropoff?.location?.coordinates;
+    if (!Array.isArray(dCoords) || dCoords.length < 2 || !Array.isArray(dropCoords) || dropCoords.length < 2) {
+      return res.status(400).json({
+        error: 'Turn on location and ensure the booking has a valid drop-off pin before completing.'
+      });
+    }
+    const dLng = Number(dCoords[0]);
+    const dLat = Number(dCoords[1]);
+    const pLng = Number(dropCoords[0]);
+    const pLat = Number(dropCoords[1]);
+    if (![dLng, dLat, pLng, pLat].every((n) => Number.isFinite(n))) {
+      return res.status(400).json({ error: 'Invalid coordinates for completion check.' });
+    }
+    const kmToDrop = getDistanceKm(dLat, dLng, pLat, pLng);
+    const metersToDrop = kmToDrop * 1000;
+    if (metersToDrop > maxDropM) {
+      return res.status(400).json({
+        error: `Move within about ${Math.round(maxDropM)} m of the customer drop-off to complete (${Math.round(metersToDrop)} m away).`
+      });
+    }
+
     const transitionGuard = enforceTransitionOrBypass(booking.status, BOOKING_STATUSES.COMPLETED);
     if (!transitionGuard.allowed) {
       return res.status(400).json({ error: transitionGuard.message });

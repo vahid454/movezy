@@ -883,6 +883,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final user = SessionManager.instance.getUser();
     final notice = _buildDashboardNotice();
     final mapBottomInset = _activeBooking != null ? 354.0 : 154.0;
+    final mapTopPad = _activeBooking != null ? 198.0 : 148.0;
     return Scaffold(
       body: Stack(
         children: [
@@ -908,7 +909,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 markers: _markers,
                 polylines: _polylines,
                 padding: EdgeInsets.only(
-                  top: 212,
+                  top: mapTopPad,
                   bottom: mapBottomInset,
                   left: 12,
                   right: 12,
@@ -996,34 +997,45 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                         backgroundColor:
                             AppColors.surface.withValues(alpha: 0.9),
                       ),
-                      InfoPill(
-                        icon: Icons.route_outlined,
-                        label: _activeBooking?.estimatedDistance != null
-                            ? _activeBooking != null
-                                ? '${_activeBooking!.estimatedDistance.toStringAsFixed(1)} km active route'
-                                : 'Live map ready'
-                            : 'Live map ready',
-                      ),
-                      if (_pos != null)
+                      if (_activeBooking != null) ...[
+                        InfoPill(
+                          icon: Icons.route_outlined,
+                          label:
+                              '${_activeBooking!.estimatedDistance.toStringAsFixed(1)} km route',
+                          backgroundColor:
+                              AppColors.surface.withValues(alpha: 0.9),
+                        ),
+                        if (_pos != null)
+                          InfoPill(
+                            icon: Icons.my_location,
+                            label:
+                                '${_pos!.latitude.toStringAsFixed(4)}, ${_pos!.longitude.toStringAsFixed(4)}',
+                            color: AppColors.info,
+                            backgroundColor:
+                                AppColors.surface.withValues(alpha: 0.9),
+                          ),
+                        InfoPill(
+                          icon: Icons.directions_car_filled_outlined,
+                          label: _driverLatLng != null &&
+                                  _activeBooking!.driver != null
+                              ? (_activeBooking!.isInProgress
+                                  ? 'Live · heading to drop-off'
+                                  : 'Live · driver approaching')
+                              : _driverPhone != null
+                                  ? 'Driver assigned'
+                                  : 'Waiting for a driver',
+                          backgroundColor:
+                              AppColors.surface.withValues(alpha: 0.9),
+                        ),
+                      ] else if (_pos != null)
                         InfoPill(
                           icon: Icons.my_location,
                           label:
                               '${_pos!.latitude.toStringAsFixed(4)}, ${_pos!.longitude.toStringAsFixed(4)}',
                           color: AppColors.info,
+                          backgroundColor:
+                              AppColors.surface.withValues(alpha: 0.9),
                         ),
-                      InfoPill(
-                        icon: Icons.directions_car_filled_outlined,
-                        label: _driverLatLng != null &&
-                                _activeBooking?.driver != null
-                            ? (_activeBooking!.isInProgress
-                                ? 'Live · heading to drop-off'
-                                : 'Live · driver approaching')
-                            : _driverPhone != null
-                                ? 'Driver assigned'
-                                : _activeBooking != null
-                                    ? 'Waiting for a driver'
-                                    : 'Tap book to start',
-                      ),
                     ],
                   ),
                   if (notice != null) ...[

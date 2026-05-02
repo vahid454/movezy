@@ -15,7 +15,7 @@ class VehicleMapIcons {
   static const double kLogicalSideDefault = 112;
 
   /// Smaller markers on the customer home map (less visual clutter).
-  static const double kLogicalSideCompact = 72;
+  static const double kLogicalSideCompact = 56;
 
   static String _emojiFor(String vehicleType) {
     return vehicleByType(vehicleType)?.emoji ?? '🚚';
