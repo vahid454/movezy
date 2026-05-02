@@ -53,7 +53,10 @@ const bookingSchema = new mongoose.Schema({
   acceptedByDriverRequestId: { type: String, trim: true }
 }, { timestamps: true });
 
-bookingSchema.index({ 'pickup.location': '2dsphere' });
+// No geospatial index on pickup: nearby-driver matching uses Haversine in code.
+// If an older deploy created `pickup.location` 2dsphere in MongoDB, drop it in
+// Atlas / shell when convenient; it is unused by current queries.
+
 bookingSchema.index({ customer: 1, status: 1 });
 bookingSchema.index({ driver: 1, status: 1 });
 bookingSchema.index({ createdAt: -1 });

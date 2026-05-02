@@ -644,7 +644,8 @@ class _BookingScreenState extends State<BookingScreen> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(14),
                     child: SizedBox(
-                      height: 300,
+                      height: (MediaQuery.sizeOf(context).height * 0.38)
+                          .clamp(280.0, 460.0),
                       child: GoogleMap(
                         initialCameraPosition: CameraPosition(
                           target: LatLng(
@@ -759,89 +760,106 @@ class _BookingScreenState extends State<BookingScreen> {
                     ),
                   ]),
                   const SizedBox(height: 12),
-                  SizedBox(
-                    height: 136,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: kVehicles.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 10),
-                      itemBuilder: (_, i) {
-                        final v = kVehicles[i];
-                        final isSelected = _selected.type == v.type;
-                        return GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _selected = v;
-                              _serverEstimatedFare = null;
-                            });
-                            _loadNearbyDrivers();
-                            _fetchFareQuote();
-                          },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 180),
-                            width: 176,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: kVehicles.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (_, i) {
+                      final v = kVehicles[i];
+                      final isSelected = _selected.type == v.type;
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selected = v;
+                            _serverEstimatedFare = null;
+                          });
+                          _loadNearbyDrivers();
+                          _fetchFareQuote();
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? Color(v.colorHex).withValues(alpha: 0.12)
+                                : AppColors.surface2,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
                               color: isSelected
-                                  ? Color(v.colorHex).withValues(alpha: 0.12)
-                                  : AppColors.surface2,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: isSelected ? Color(v.colorHex) : AppColors.border,
-                                width: isSelected ? 1.6 : 1,
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(v.emoji, style: const TextStyle(fontSize: 22)),
-                                    const Spacer(),
-                                    if (isSelected)
-                                      Icon(Icons.check_circle, color: Color(v.colorHex), size: 16),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Text(v.name,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.textPrimary,
-                                      fontSize: 14,
-                                    )),
-                                const SizedBox(height: 3),
-                                Text(
-                                  '${v.desc} · ${v.capacity}',
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                                ),
-                                Text(
-                                  v.suitableFor,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    color: AppColors.textMuted,
-                                  ),
-                                ),
-                                Text(
-                                  _distanceKm != null
-                                      ? 'Est. ₹${v.estimateFare(_effectiveDistanceKm)}'
-                                      : 'Base ₹${v.baseFare}',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 12,
-                                    color: Color(v.colorHex),
-                                  ),
-                                ),
-                              ],
+                                  ? Color(v.colorHex)
+                                  : AppColors.border,
+                              width: isSelected ? 1.6 : 1,
                             ),
                           ),
-                        );
-                      },
-                    ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Text(v.emoji,
+                                  style: const TextStyle(fontSize: 28)),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      v.name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.textPrimary,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${v.desc} · ${v.capacity}',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                    Text(
+                                      v.suitableFor,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  if (isSelected)
+                                    Icon(Icons.check_circle,
+                                        color: Color(v.colorHex), size: 20)
+                                  else
+                                    const SizedBox(height: 20),
+                                  Text(
+                                    _distanceKm != null
+                                        ? '₹${v.estimateFare(_effectiveDistanceKm)}'
+                                        : '₹${v.baseFare}+',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 13,
+                                      color: Color(v.colorHex),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 10),
                   _FareBreakupCard(
@@ -858,22 +876,60 @@ class _BookingScreenState extends State<BookingScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('WHAT ARE YOU MOVING?',
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.8)),
+                  const Text(
+                    'WHAT ARE YOU MOVING?',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: _descCtrl,
                     style: const TextStyle(
-                        color: AppColors.textPrimary, fontSize: 14),
-                    maxLines: 2,
-                    decoration: const InputDecoration(
-                      hintText: 'e.g. 2-seater sofa, 3 cartons of books…',
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
+                      color: AppColors.textPrimary,
+                      fontSize: 14,
+                      height: 1.4,
+                    ),
+                    minLines: 3,
+                    maxLines: 6,
+                    keyboardType: TextInputType.multiline,
+                    textInputAction: TextInputAction.newline,
+                    decoration: InputDecoration(
+                      hintText:
+                          'e.g. 2-seater sofa, 3 cartons of books, fridge…',
+                      hintMaxLines: 3,
+                      hintStyle: TextStyle(
+                        color: AppColors.textMuted.withValues(alpha: 0.9),
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
+                      filled: true,
+                      fillColor: AppColors.surface2,
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                          color: AppColors.primary,
+                          width: 1.5,
+                        ),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
                     ),
                   ),
                 ],
@@ -913,7 +969,9 @@ class _InfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final maxW = (MediaQuery.sizeOf(context).width - 56).clamp(140.0, 320.0);
     return Container(
+      constraints: BoxConstraints(maxWidth: maxW),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: AppColors.surface2,
@@ -921,16 +979,19 @@ class _InfoChip extends StatelessWidget {
         border: Border.all(color: AppColors.border),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 14, color: AppColors.primary),
           const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.w600,
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],

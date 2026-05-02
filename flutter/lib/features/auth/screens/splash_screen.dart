@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:movezy/core/constants/app_constants.dart';
@@ -11,27 +13,64 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _scale;
-  late final Animation<double> _fade;
+class _SplashSlide {
+  final String emoji;
+  final String headline;
+  final String line;
+  final List<Color> gradient;
+
+  const _SplashSlide({
+    required this.emoji,
+    required this.headline,
+    required this.line,
+    required this.gradient,
+  });
+}
+
+const _kSlides = [
+  _SplashSlide(
+    emoji: '📦',
+    headline: 'Load',
+    line: 'Parcels, cartons, and home goods',
+    gradient: [Color(0xFF1E3A5F), Color(0xFF0F172A)],
+  ),
+  _SplashSlide(
+    emoji: '🚚',
+    headline: 'Move',
+    line: 'Tempos & trucks when you need scale',
+    gradient: [Color(0xFF422006), Color(0xFF1C1917)],
+  ),
+  _SplashSlide(
+    emoji: '🏠',
+    headline: 'Deliver',
+    line: 'Door-to-door, city-wide',
+    gradient: [Color(0xFF14532D), Color(0xFF0F172A)],
+  ),
+];
+
+class _SplashScreenState extends State<SplashScreen> {
+  final PageController _pageController = PageController();
+  Timer? _carouselTimer;
+  int _pageIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900));
-    _scale = CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut);
-    _fade = CurvedAnimation(
-        parent: _ctrl,
-        curve: const Interval(0.4, 1, curve: Curves.easeIn));
-    _ctrl.forward();
+    _carouselTimer = Timer.periodic(const Duration(milliseconds: 2200), (_) {
+      if (!mounted || !_pageController.hasClients) return;
+      final current = _pageController.page?.round() ?? _pageIndex;
+      final next = (current + 1) % _kSlides.length;
+      _pageController.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 520),
+        curve: Curves.easeOutCubic,
+      );
+    });
     _navigate();
   }
 
   Future<void> _navigate() async {
-    await Future.delayed(const Duration(milliseconds: 1700));
+    await Future.delayed(const Duration(milliseconds: 2400));
     if (!mounted) return;
     final session = SessionManager.instance;
     if (!session.isLoggedIn()) {
@@ -45,7 +84,8 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _carouselTimer?.cancel();
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -53,84 +93,102 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment(-0.4, -0.4),
-            radius: 1.2,
-            colors: [Color(0x50FF6B00), AppColors.background],
-          ),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ScaleTransition(
-                scale: _scale,
-                child: Container(
-                  width: 96,
-                  height: 96,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryGlow,
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(
-                        color: AppColors.primary.withOpacity(0.3),
-                        width: 1.5),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primary.withOpacity(0.4),
-                        blurRadius: 40,
-                        spreadRadius: 4,
-                      )
-                    ],
-                  ),
-                  child: const Center(
-                    child:
-                        Text('⚡', style: TextStyle(fontSize: 48)),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            physics: const NeverScrollableScrollPhysics(),
+            onPageChanged: (i) => setState(() => _pageIndex = i),
+            itemCount: _kSlides.length,
+            itemBuilder: (context, i) {
+              final s = _kSlides[i];
+              return DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: s.gradient,
                   ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              FadeTransition(
-                opacity: _fade,
-                child: const Column(
-                  children: [
-                    Text(
-                      'MOVEZY',
-                      style: TextStyle(
-                        fontSize: 38,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.primary,
-                        letterSpacing: 6,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 12),
+                        Text(
+                          s.emoji,
+                          style: const TextStyle(fontSize: 88, height: 1),
+                        ),
+                        const Spacer(),
+                        Text(
+                          s.headline,
+                          style: const TextStyle(
+                            fontSize: 42,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          s.line,
+                          style: TextStyle(
+                            fontSize: 16,
+                            height: 1.45,
+                            color: Colors.white.withValues(alpha: 0.88),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 36),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 36,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(_kSlides.length, (i) {
+                    final active = i == _pageIndex;
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 280),
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      width: active ? 22 : 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: active
+                            ? AppColors.primary
+                            : Colors.white.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(999),
                       ),
-                    ),
-                    SizedBox(height: 6),
-                    Text(
-                      'Fast city transport',
-                      style: TextStyle(
-                          fontSize: 14,
-                          color: AppColors.textSecondary,
-                          letterSpacing: 1),
-                    ),
-                  ],
+                    );
+                  }),
                 ),
-              ),
-              const SizedBox(height: 60),
-              FadeTransition(
-                opacity: _fade,
-                child: SizedBox(
-                  width: 40,
-                  height: 2,
-                  child: LinearProgressIndicator(
-                    backgroundColor: AppColors.border,
-                    valueColor:
-                        const AlwaysStoppedAnimation(AppColors.primary),
+                const SizedBox(height: 20),
+                const Text(
+                  'MOVEZY',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    letterSpacing: 8,
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

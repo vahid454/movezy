@@ -52,6 +52,32 @@ const toValidCoordinate = (value, min, max) => {
   return parsedValue;
 };
 
+/** GeoJSON Point on drivers is [lng, lat]. Returns null if unusable. */
+const driverLngLat = (driver) => {
+  const coords = driver?.location?.coordinates;
+  if (!Array.isArray(coords) || coords.length < 2) return null;
+  const lng = Number(coords[0]);
+  const lat = Number(coords[1]);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+  return { lat, lng };
+};
+
+/**
+ * Nearby matching without Mongo $near — avoids "unknown GeoJSON type" when any
+ * driver document has a malformed `location` field that still slips past filters.
+ */
+const sortDriversByDistanceKm = (drivers, centerLat, centerLng, maxRadiusKm) => {
+  const scored = [];
+  for (const d of drivers) {
+    const ll = driverLngLat(d);
+    if (!ll) continue;
+    const km = getDistance(centerLat, centerLng, ll.lat, ll.lng);
+    if (km <= maxRadiusKm) scored.push({ doc: d, km });
+  }
+  scored.sort((a, b) => a.km - b.km);
+  return scored.map((s) => s.doc);
+};
+
 const normalizeLocation = (location) => {
   if (!location || typeof location !== 'object') return null;
 
@@ -185,19 +211,18 @@ router.post('/create-booking', authenticate, requireRole('customer'), async (req
       metadata: { vehicleType, estimatedFare }
     });
 
-    // Find nearby drivers
-    const nearbyDrivers = await Driver.find({
+    const driverCandidates = await Driver.find({
       approvalStatus: 'approved',
       isOnline: true,
-      isAvailable: true,
-      'location.type': 'Point',
-      location: {
-        $near: {
-          $geometry: { type: 'Point', coordinates: [normalizedPickup.longitude, normalizedPickup.latitude] },
-          $maxDistance: 5000
-        }
-      }
-    }).populate('user', 'fcmToken name').limit(10);
+      isAvailable: true
+    }).populate('user', 'fcmToken name').limit(120);
+
+    const nearbyDrivers = sortDriversByDistanceKm(
+      driverCandidates,
+      normalizedPickup.latitude,
+      normalizedPickup.longitude,
+      5
+    ).slice(0, 10);
 
     booking.notifiedDrivers = nearbyDrivers.map(d => d._id);
     await booking.save();
@@ -421,17 +446,18 @@ router.get('/nearby-drivers', authenticate, requireRole('customer'), async (req,
     const query = {
       approvalStatus: 'approved',
       isOnline: true,
-      isAvailable: true,
-      'location.type': 'Point',
-      location: {
-        $near: {
-          $geometry: { type: 'Point', coordinates: [parsedLongitude, parsedLatitude] },
-          $maxDistance: 8000
-        }
-      }
+      isAvailable: true
     };
     if (vehicleType) query.vehicleType = vehicleType;
-    const drivers = await Driver.find(query).select('name vehicleNumber vehicleType rating location').limit(20);
+    const driverCandidates = await Driver.find(query)
+      .select('name vehicleNumber vehicleType rating location')
+      .limit(120);
+    const drivers = sortDriversByDistanceKm(
+      driverCandidates,
+      parsedLatitude,
+      parsedLongitude,
+      8
+    ).slice(0, 20);
     res.json({ success: true, drivers });
   } catch (err) {
     res.status(500).json({ error: err.message });

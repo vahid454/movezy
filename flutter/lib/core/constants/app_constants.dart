@@ -28,6 +28,14 @@ class AppConstants {
   static const double defaultZoom = 15.0;
   static const double dashboardMapZoom = 14.2;
 
+  // Google Maps keys are read by native SDKs, not by Dart `String.fromEnvironment`.
+  // Android: set MOVEZY_MAPS_ANDROID_KEY in the environment or in
+  // `flutter/android/local.properties` before `flutter build apk` / run — see
+  // `android/app/build.gradle` manifestPlaceholders. Restrict the key in
+  // Google Cloud Console to package `com.movezy` and your debug/release SHA-1,
+  // and enable "Maps SDK for Android" (and iOS if applicable) with billing on.
+  // iOS: set MOVEZY_MAPS_IOS_KEY in Xcode build settings or xcconfig for Runner.
+
   // Search
   static const int searchRadiusM = 5000;
 

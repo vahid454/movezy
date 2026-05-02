@@ -771,7 +771,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Widget build(BuildContext context) {
     final user = SessionManager.instance.getUser();
     final notice = _buildDashboardNotice();
-    final mapBottomInset = _activeBooking != null ? 292.0 : 228.0;
+    final mapBottomInset = _activeBooking != null ? 292.0 : 154.0;
     return Scaffold(
       body: Stack(
         children: [
@@ -841,7 +841,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                               'Hey, ${user?.name.split(' ').firstOrNull ?? 'there'} 👋',
                           subtitle: _activeBooking != null
                               ? '${_activeBooking!.statusLabel} · ${_activeBooking!.displayBookingId}'
-                              : 'Live map, nearby vehicles, and quick booking',
+                              : 'Live map and quick booking',
                           accent: _activeBooking != null
                               ? 'Active booking'
                               : 'Customer',
@@ -1088,58 +1088,6 @@ class _HomePanel extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 14),
-        SizedBox(
-          height: 108,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: kVehicles.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
-            itemBuilder: (_, i) {
-              final v = kVehicles[i];
-              return GestureDetector(
-                onTap: onBook,
-                child: Container(
-                  width: 112,
-                  decoration: BoxDecoration(
-                    color: AppColors.surface2,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(v.emoji, style: const TextStyle(fontSize: 22)),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(v.name,
-                          style: const TextStyle(
-                              fontSize: 10,
-                              color: AppColors.textSecondary,
-                              fontWeight: FontWeight.w600),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center),
-                      const SizedBox(height: 2),
-                      Text(
-                        v.capacity,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 9,
-                          color: AppColors.textMuted,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 12),
         PrimaryButton(label: '📦   Book Transport', onTap: onBook),
         const SizedBox(height: 8),
         OutlineBtn(label: '📋   View History', onTap: onHistory),
