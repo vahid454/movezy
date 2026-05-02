@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:movezy/core/constants/app_constants.dart';
+import 'package:movezy/core/utils/vehicle_map_icons.dart';
 import 'package:movezy/core/theme/app_theme.dart';
 import 'package:movezy/core/widgets/widgets.dart';
 import 'package:movezy/data/datasources/api_service.dart';
@@ -41,11 +42,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   static const Duration _searchTimeout = Duration(minutes: 5);
   String? _locationNotice;
   final _api = ApiService();
+  Map<String, BitmapDescriptor> _vehicleBmps = {};
 
   @override
   void initState() {
     super.initState();
     _api.setToken(SessionManager.instance.getToken());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadVehicleMapIcons());
     _initLoc();
     _connectSocket();
     _checkActive(fitCamera: true);
@@ -78,6 +81,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     } finally {
       _dashboardSyncInFlight = false;
     }
+  }
+
+  Future<void> _loadVehicleMapIcons() async {
+    try {
+      await VehicleMapIcons.preloadAll();
+      final m = <String, BitmapDescriptor>{};
+      for (final v in kVehicles) {
+        m[v.type] = await VehicleMapIcons.forVehicleType(v.type);
+      }
+      if (mounted) {
+        setState(() => _vehicleBmps = m);
+        _refreshMapOverlay();
+      }
+    } catch (_) {}
   }
 
   Future<void> _initLoc() async {
@@ -341,8 +358,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           Marker(
             markerId: MarkerId('nearby_${driver.id}'),
             position: LatLng(lat, lng),
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-                _markerHueForVehicle(driver.vehicleType)),
+            icon: _vehicleBmps[driver.vehicleType] ??
+                BitmapDescriptor.defaultMarkerWithHue(
+                    _markerHueForVehicle(driver.vehicleType)),
             infoWindow: InfoWindow(
               title: '${vLabel.toUpperCase()} · ${driver.vehicleNumber}',
               snippet: driver.name.isNotEmpty

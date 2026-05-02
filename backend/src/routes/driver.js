@@ -13,6 +13,14 @@ const { BOOKING_STATUSES, enforceTransitionOrBypass } = require('../utils/bookin
 const { IDEMPOTENCY_ENABLED, getIdempotencyKey } = require('../utils/idempotency');
 const { logAuditEvent } = require('../utils/auditLogger');
 
+const getDistanceKm = (lat1, lon1, lat2, lon2) => {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
 const toValidCoordinate = (value, min, max) => {
   const parsedValue = Number(value);
   if (!Number.isFinite(parsedValue) || parsedValue < min || parsedValue > max) {
@@ -325,6 +333,64 @@ router.post('/complete-trip', authenticate, requireRole('driver'), async (req, r
     }
 
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/driver/nearby-open-bookings — searching jobs near driver (two-way discovery)
+router.get('/nearby-open-bookings', authenticate, requireRole('driver'), async (req, res) => {
+  try {
+    const driver = await Driver.findOne({ user: req.userId });
+    if (!driver || driver.approvalStatus !== 'approved') {
+      return res.status(403).json({ error: 'Driver not approved' });
+    }
+    const lat = toValidCoordinate(req.query.latitude, -90, 90);
+    const lng = toValidCoordinate(req.query.longitude, -180, 180);
+    if (lat === null || lng === null) {
+      return res.status(400).json({ error: 'Valid latitude and longitude required' });
+    }
+    const maxKm = Math.min(Number(req.query.maxKm) || 18, 40);
+
+    const raw = await Booking.find({
+      status: BOOKING_STATUSES.SEARCHING,
+      $or: [{ driver: { $exists: false } }, { driver: null }]
+    })
+      .select('bookingId vehicleType pickup dropoff estimatedFare estimatedDistance description createdAt rejectedByDrivers')
+      .populate('customer', 'name')
+      .sort({ createdAt: -1 })
+      .limit(120)
+      .lean();
+
+    const driverIdStr = driver._id.toString();
+    const offers = [];
+    for (const b of raw) {
+      const coords = b.pickup?.location?.coordinates;
+      if (!Array.isArray(coords) || coords.length < 2) continue;
+      const pLng = Number(coords[0]);
+      const pLat = Number(coords[1]);
+      if (!Number.isFinite(pLng) || !Number.isFinite(pLat)) continue;
+      const km = getDistanceKm(lat, lng, pLat, pLng);
+      if (km > maxKm) continue;
+      const rejected = (b.rejectedByDrivers || []).map((id) => id.toString());
+      if (rejected.includes(driverIdStr)) continue;
+      offers.push({
+        id: b._id.toString(),
+        bookingId: b.bookingId,
+        vehicleType: b.vehicleType,
+        pickupAddress: b.pickup?.address || '',
+        dropoffAddress: b.dropoff?.address || '',
+        pickupLat: pLat,
+        pickupLng: pLng,
+        estimatedFare: b.estimatedFare,
+        estimatedDistance: b.estimatedDistance,
+        description: b.description || '',
+        distanceKm: Math.round(km * 10) / 10,
+        customerName: b.customer?.name || ''
+      });
+    }
+    offers.sort((a, b) => a.distanceKm - b.distanceKm);
+    res.json({ success: true, bookings: offers.slice(0, 24) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -5,7 +5,7 @@ const User = require('../models/User');
 const Driver = require('../models/Driver');
 const Booking = require('../models/Booking');
 const { authenticate, requireRole } = require('../middleware/auth');
-const { sendPushNotification } = require('../utils/notifications');
+const { sendMulticastNotification } = require('../utils/notifications');
 const { BOOKING_STATUSES, enforceTransitionOrBypass } = require('../utils/bookingPolicy');
 const { IDEMPOTENCY_ENABLED, getIdempotencyKey } = require('../utils/idempotency');
 const { logAuditEvent } = require('../utils/auditLogger');
@@ -17,6 +17,15 @@ const VEHICLE_FARE_CONFIG = {
   tempo: { baseFare: 100, perKm: 30, minFare: 180 },
   truck: { baseFare: 200, perKm: 50, minFare: 320 },
   pickup: { baseFare: 120, perKm: 35, minFare: 220 }
+};
+
+const VEHICLE_LABEL = {
+  bike: 'Bike',
+  auto: 'Auto',
+  mini_truck: 'Mini truck',
+  tempo: 'Tempo',
+  truck: 'Truck',
+  pickup: 'Pickup'
 };
 
 // Haversine distance
@@ -221,20 +230,28 @@ router.post('/create-booking', authenticate, requireRole('customer'), async (req
       driverCandidates,
       normalizedPickup.latitude,
       normalizedPickup.longitude,
-      5
-    ).slice(0, 10);
+      12
+    ).slice(0, 40);
 
     booking.notifiedDrivers = nearbyDrivers.map(d => d._id);
     await booking.save();
 
-    // Notify drivers
+    const vLabel = VEHICLE_LABEL[vehicleType] || vehicleType;
+    const pushTitle = `Movezy · New ${vLabel} job`;
+    const pushBody = `₹${estimatedFare} est. · ${normalizedPickup.address} → ${normalizedDropoff.address}`;
+    const pushData = {
+      bookingId: booking._id.toString(),
+      type: 'new_booking',
+      vehicleType: `${vehicleType}`
+    };
+    const fcmTokens = [...new Set(
+      nearbyDrivers.map((d) => d.user?.fcmToken).filter(Boolean)
+    )];
+    if (fcmTokens.length) {
+      await sendMulticastNotification(fcmTokens, pushTitle, pushBody, pushData);
+    }
+
     for (const driver of nearbyDrivers) {
-      if (driver.user?.fcmToken) {
-        await sendPushNotification(driver.user.fcmToken, 'New Request Nearby! 📦',
-          `${vehicleType.toUpperCase()} needed: ${normalizedPickup.address} → ${normalizedDropoff.address}`,
-          { bookingId: booking._id.toString(), type: 'new_booking' }
-        );
-      }
       if (req.io) {
         req.io.to(`driver_${driver._id}`).emit('new_booking_request', {
           bookingId: booking._id,

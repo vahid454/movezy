@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:movezy/core/constants/app_constants.dart';
+import 'package:movezy/core/utils/vehicle_map_icons.dart';
 import 'package:movezy/core/theme/app_theme.dart';
 import 'package:movezy/core/widgets/widgets.dart';
 import 'package:movezy/data/datasources/api_service.dart';
@@ -39,11 +40,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   String? _customerPhone;
   LatLng? _customerLatLng;
   final _api = ApiService();
+  Map<String, BitmapDescriptor> _vehicleBmps = {};
+  List<Map<String, dynamic>> _openNearby = const [];
+  Timer? _openBookingsPoll;
 
   @override
   void initState() {
     super.initState();
     _api.setToken(SessionManager.instance.getToken());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadVehicleMapIcons());
     _loadProfile();
     _initLoc();
     _connectSocket();
@@ -55,8 +60,46 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     _locSub?.cancel();
     _refreshTimer?.cancel();
     _customerAnimationTimer?.cancel();
+    _openBookingsPoll?.cancel();
     SocketService.instance.offAll();
     super.dispose();
+  }
+
+  Future<void> _loadVehicleMapIcons() async {
+    try {
+      await VehicleMapIcons.preloadAll();
+      final m = <String, BitmapDescriptor>{};
+      for (final v in kVehicles) {
+        m[v.type] = await VehicleMapIcons.forVehicleType(v.type);
+      }
+      if (mounted) {
+        setState(() => _vehicleBmps = m);
+        _refreshMapOverlay();
+      }
+    } catch (_) {}
+  }
+
+  void _syncOpenBookingsPoll() {
+    _openBookingsPoll?.cancel();
+    if (!_isOnline || _activeBooking != null || _pos == null) {
+      return;
+    }
+    _openBookingsPoll =
+        Timer.periodic(const Duration(seconds: 22), (_) => _fetchNearbyOpenBookings());
+    unawaited(_fetchNearbyOpenBookings());
+  }
+
+  Future<void> _fetchNearbyOpenBookings() async {
+    if (_pos == null || !_isOnline || _activeBooking != null) return;
+    try {
+      final list = await _api.getDriverNearbyOpenBookings(
+        latitude: _pos!.latitude,
+        longitude: _pos!.longitude,
+      );
+      if (!mounted) return;
+      setState(() => _openNearby = list);
+      _refreshMapOverlay();
+    } catch (_) {}
   }
 
   void _startLiveRefresh() {
@@ -102,6 +145,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         });
         if (active != null) {
           SocketService.instance.joinBooking(active.id);
+          _openBookingsPoll?.cancel();
+        } else {
+          _syncOpenBookingsPoll();
         }
         _refreshMapOverlay(fitCamera: fitCamera || active != null);
       } else if (p.isPending || p.isRejected) {
@@ -134,6 +180,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       _locationNotice = null;
     });
     _refreshMapOverlay(fitCamera: true);
+    if (_isOnline && _activeBooking == null) {
+      _syncOpenBookingsPoll();
+    }
 
     _locSub = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
@@ -145,6 +194,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         _api.updateDriverLocation(p.latitude, p.longitude);
         SocketService.instance.emitDriverLoc(p.latitude, p.longitude,
             bookingId: _activeBooking?.id);
+        if (_activeBooking == null) {
+          unawaited(_fetchNearbyOpenBookings());
+        }
       }
       _refreshMapOverlay();
     });
@@ -157,6 +209,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
     SocketService.instance.on('new_booking_request', (data) {
       if (!mounted || _activeBooking != null) return;
+      unawaited(_fetchNearbyOpenBookings());
       _showRequestDialog(data);
     });
 
@@ -179,6 +232,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         _tripRouteKey = null;
       });
       _refreshMapOverlay(fitCamera: true);
+      _syncOpenBookingsPoll();
       showSnack(context, 'Customer cancelled the booking', error: true);
     });
   }
@@ -218,16 +272,43 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     final nextPolylines = <Polyline>{};
 
     if (_pos != null) {
+      final vt = _profile?.vehicleType ?? 'auto';
       nextMarkers.add(
         Marker(
           markerId: const MarkerId('driver'),
           position: LatLng(_pos!.latitude, _pos!.longitude),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueYellow,
-          ),
+          icon: _vehicleBmps[vt] ??
+              BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueYellow,
+              ),
           infoWindow: const InfoWindow(title: 'Your vehicle'),
         ),
       );
+    }
+
+    if (_activeBooking == null && _isOnline) {
+      for (final o in _openNearby) {
+        final lat = (o['pickupLat'] as num?)?.toDouble();
+        final lng = (o['pickupLng'] as num?)?.toDouble();
+        final id = o['id']?.toString() ?? '';
+        final vt = o['vehicleType']?.toString() ?? 'auto';
+        if (lat == null || lng == null || id.isEmpty) continue;
+        nextMarkers.add(
+          Marker(
+            markerId: MarkerId('open_$id'),
+            position: LatLng(lat, lng),
+            icon: _vehicleBmps[vt] ??
+                BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueOrange,
+                ),
+            infoWindow: InfoWindow(
+              title: 'Open · ${o['bookingId'] ?? ''}',
+              snippet: (o['pickupAddress'] ?? '').toString(),
+            ),
+            onTap: () => _showOfferBookingDialog(o),
+          ),
+        );
+      }
     }
 
     final booking = _activeBooking;
@@ -412,6 +493,19 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     );
   }
 
+  void _showOfferBookingDialog(Map<String, dynamic> o) {
+    _showRequestDialog({
+      'bookingId': o['id'],
+      'bookingCode': o['bookingId'],
+      'vehicleType': o['vehicleType'],
+      'pickup': {'address': o['pickupAddress']},
+      'dropoff': {'address': o['dropoffAddress']},
+      'estimatedDistance': o['estimatedDistance'],
+      'estimatedFare': o['estimatedFare'],
+      'description': o['description'],
+    });
+  }
+
   void _showRequestDialog(Map<String, dynamic> data) {
     final bookingId = data['bookingId']?.toString() ?? '';
     final code = data['bookingCode']?.toString() ?? '';
@@ -508,7 +602,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     try {
       final on = await _api.toggleOnline();
       if (!mounted) return;
-      setState(() => _isOnline = on);
+      setState(() {
+        _isOnline = on;
+        if (!on) {
+          _openNearby = const [];
+        }
+      });
+      if (!on) {
+        _openBookingsPoll?.cancel();
+      } else if (_activeBooking == null && _pos != null) {
+        _syncOpenBookingsPoll();
+      }
       if (on && _pos != null) {
         await _api.updateDriverLocation(_pos!.latitude, _pos!.longitude);
       }
@@ -549,6 +653,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         _tripRouteKey = null;
       });
       _refreshMapOverlay(fitCamera: true);
+      _syncOpenBookingsPoll();
       showSnack(context, '✅ Trip completed!');
     } catch (_) {
       if (mounted) {
@@ -740,6 +845,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     _fitMapToVisiblePoints([
       if (_pos != null) LatLng(_pos!.latitude, _pos!.longitude),
       if (_customerLatLng != null) _customerLatLng!,
+      for (final o in _openNearby)
+        if ((o['pickupLat'] as num?) != null && (o['pickupLng'] as num?) != null)
+          LatLng(
+            (o['pickupLat'] as num).toDouble(),
+            (o['pickupLng'] as num).toDouble(),
+          ),
       if (_activeBooking?.pickup != null &&
           _activeBooking!.pickup!.latitude != 0 &&
           _activeBooking!.pickup!.longitude != 0)
@@ -767,11 +878,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       );
     }
     if (_activeBooking == null && _isOnline) {
-      return const InlineNoticeCard(
+      return InlineNoticeCard(
         icon: Icons.radar_outlined,
         title: 'Driver is online',
-        subtitle:
-            'Dispatch is live. New booking requests will appear here as soon as they match your vehicle and location.',
+        subtitle: _openNearby.isEmpty
+            ? 'Dispatch is live. Nearby open jobs appear on the map and below when customers book.'
+            : '${_openNearby.length} open job${_openNearby.length == 1 ? '' : 's'} near you — tap a pin or card to accept.',
         accent: AppColors.success,
       );
     }
@@ -782,7 +894,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   Widget build(BuildContext context) {
     final user = SessionManager.instance.getUser();
     final notice = _buildDashboardNotice();
-    final mapBottomInset = _activeBooking != null ? 284.0 : 228.0;
+    final mapBottomInset = _activeBooking != null
+        ? 284.0
+        : (_openNearby.isNotEmpty && _isOnline ? 312.0 : 228.0);
     return Scaffold(
       body: Stack(
         children: [
@@ -926,6 +1040,101 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               ),
             ),
           ),
+          if (_activeBooking == null &&
+              _isOnline &&
+              _openNearby.isNotEmpty)
+            Positioned(
+              left: 8,
+              right: 8,
+              bottom: 210,
+              height: 96,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.surface.withValues(alpha: 0.95),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: AppColors.border),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Nearby open bookings',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textSecondary,
+                        letterSpacing: 0.6,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Expanded(
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _openNearby.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (_, i) {
+                          final o = _openNearby[i];
+                          final vt = o['vehicleType']?.toString() ?? '';
+                          final v = vehicleByType(vt);
+                          final fare = (o['estimatedFare'] as num?)?.toInt() ?? 0;
+                          final km = (o['distanceKm'] as num?)?.toDouble() ?? 0;
+                          return Material(
+                            color: AppColors.surface2,
+                            borderRadius: BorderRadius.circular(14),
+                            child: InkWell(
+                              onTap: () => _showOfferBookingDialog(o),
+                              borderRadius: BorderRadius.circular(14),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 8),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(v?.emoji ?? '📦',
+                                        style: const TextStyle(fontSize: 22)),
+                                    const SizedBox(width: 8),
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          v?.name ?? vt,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 13,
+                                            color: AppColors.textPrimary,
+                                          ),
+                                        ),
+                                        Text(
+                                          '${km.toStringAsFixed(1)} km · ₹$fare',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppColors.textSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           Positioned(
             bottom: 0,
             left: 0,
@@ -1093,9 +1302,16 @@ class _Row extends StatelessWidget {
           Text(icon, style: const TextStyle(fontSize: 13)),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(label,
-                style: const TextStyle(
-                    fontSize: 13, color: AppColors.textSecondary)),
+            child: Text(
+              label,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                height: 1.35,
+              ),
+            ),
           ),
         ],
       ),

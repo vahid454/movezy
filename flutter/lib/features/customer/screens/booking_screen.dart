@@ -9,6 +9,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:movezy/core/theme/app_theme.dart';
 import 'package:movezy/core/widgets/widgets.dart';
 import 'package:movezy/core/constants/app_constants.dart';
+import 'package:movezy/core/utils/vehicle_map_icons.dart';
 import 'package:movezy/data/datasources/api_service.dart';
 import 'package:movezy/data/models/models.dart';
 import 'package:movezy/services/session_manager.dart';
@@ -45,6 +46,7 @@ class _BookingScreenState extends State<BookingScreen> {
   Timer? _routeRebuildDebounce;
   final _api = ApiService();
   _PinSelectionMode _pinMode = _PinSelectionMode.dropoff;
+  Map<String, BitmapDescriptor> _vehicleBmps = {};
 
   double get _effectiveDistanceKm => _distanceKm ?? 0;
 
@@ -52,7 +54,22 @@ class _BookingScreenState extends State<BookingScreen> {
   void initState() {
     super.initState();
     _api.setToken(SessionManager.instance.getToken());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadVehicleMapIcons());
     _autoPickup();
+  }
+
+  Future<void> _loadVehicleMapIcons() async {
+    try {
+      await VehicleMapIcons.preloadAll();
+      final m = <String, BitmapDescriptor>{};
+      for (final v in kVehicles) {
+        m[v.type] = await VehicleMapIcons.forVehicleType(v.type);
+      }
+      if (mounted) {
+        setState(() => _vehicleBmps = m);
+        _refreshMapPreview();
+      }
+    } catch (_) {}
   }
 
   @override
@@ -243,7 +260,9 @@ class _BookingScreenState extends State<BookingScreen> {
         Marker(
           markerId: MarkerId('nearby_${driver.id}'),
           position: LatLng(lat, lng),
-          icon: BitmapDescriptor.defaultMarkerWithHue(_markerHueForVehicle(driver.vehicleType)),
+          icon: _vehicleBmps[driver.vehicleType] ??
+              BitmapDescriptor.defaultMarkerWithHue(
+                  _markerHueForVehicle(driver.vehicleType)),
           infoWindow: InfoWindow(
             title: '${vLabel.toUpperCase()} · ${driver.vehicleNumber}',
             snippet: driver.name.isNotEmpty
@@ -1082,31 +1101,50 @@ class _LocRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(emoji, style: const TextStyle(fontSize: 14)),
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(emoji, style: const TextStyle(fontSize: 14)),
+        ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label,
-                  style: const TextStyle(
-                      fontSize: 10,
-                      color: AppColors.textMuted,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.5)),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: AppColors.textMuted,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 2),
               TextField(
                 controller: ctrl,
                 onChanged: onChanged,
+                minLines: 1,
+                maxLines: 4,
+                keyboardType: TextInputType.multiline,
+                textInputAction: TextInputAction.newline,
                 style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500),
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  height: 1.35,
+                ),
                 decoration: InputDecoration(
                   hintText: hint,
-                  hintStyle:
-                      const TextStyle(color: AppColors.textMuted, fontSize: 14),
+                  hintStyle: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 14,
+                    height: 1.35,
+                  ),
+                  isDense: true,
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.zero,
                 ),

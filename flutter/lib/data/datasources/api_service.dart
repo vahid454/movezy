@@ -127,6 +127,22 @@ class ApiService {
         data: {'latitude': lat, 'longitude': lng});
   }
 
+  /// Open `searching` bookings near driver (two-way discovery).
+  Future<List<Map<String, dynamic>>> getDriverNearbyOpenBookings({
+    required double latitude,
+    required double longitude,
+    double maxKm = 18,
+  }) async {
+    final r = await _dio.get('/driver/nearby-open-bookings', queryParameters: {
+      'latitude': latitude,
+      'longitude': longitude,
+      'maxKm': maxKm,
+    });
+    final data = r.data as Map<String, dynamic>;
+    final list = data['bookings'] as List? ?? [];
+    return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
   Future<bool> respondToBooking(String bookingId, String action) async {
     final r = await _dio.post('/driver/respond-booking',
         data: {'bookingId': bookingId, 'action': action});
