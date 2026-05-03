@@ -11,6 +11,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:movezy/core/theme/app_theme.dart';
 import 'package:movezy/core/widgets/widgets.dart';
 import 'package:movezy/core/constants/app_constants.dart';
+import 'package:movezy/features/customer/utils/customer_cancel_booking_flow.dart';
 import 'package:movezy/core/utils/vehicle_map_icons.dart';
 import 'package:movezy/data/datasources/api_service.dart';
 import 'package:movezy/data/models/models.dart';
@@ -53,6 +54,8 @@ class _BookingScreenState extends State<BookingScreen> {
   final _api = ApiService();
   _PinSelectionMode _pinMode = _PinSelectionMode.dropoff;
   Map<String, BitmapDescriptor> _vehicleBmps = {};
+  BookingModel? _activeBooking;
+  bool _loadingActiveBooking = false;
 
   double get _effectiveDistanceKm => _distanceKm ?? 0;
 
@@ -60,8 +63,35 @@ class _BookingScreenState extends State<BookingScreen> {
   void initState() {
     super.initState();
     _api.setToken(SessionManager.instance.getToken());
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadVehicleMapIcons());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadVehicleMapIcons();
+      _loadActiveBooking();
+    });
     _autoPickup();
+  }
+
+  Future<void> _loadActiveBooking() async {
+    setState(() => _loadingActiveBooking = true);
+    try {
+      final b = await _api.getActiveBooking();
+      if (mounted) setState(() => _activeBooking = b);
+    } catch (_) {
+      if (mounted) setState(() => _activeBooking = null);
+    } finally {
+      if (mounted) setState(() => _loadingActiveBooking = false);
+    }
+  }
+
+  Future<void> _cancelActiveBooking() async {
+    if (_activeBooking == null) return;
+    final r = await runCustomerCancelBookingFlow(
+      context: context,
+      api: _api,
+      bookingMongoId: _activeBooking!.id,
+    );
+    if (r == null || !mounted) return;
+    setState(() => _activeBooking = null);
+    context.go(AppRoutes.customerHome);
   }
 
   Future<void> _loadVehicleMapIcons() async {
@@ -756,6 +786,73 @@ class _BookingScreenState extends State<BookingScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (_loadingActiveBooking)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
+            if (_activeBooking != null) ...[
+              MCard(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'ACTIVE TRIP',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.8,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _activeBooking!.displayBookingId,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _activeBooking!.statusLabel,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _loading ? null : _cancelActiveBooking,
+                          child: const Text(
+                            'Cancel trip',
+                            style: TextStyle(color: AppColors.danger),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: () => context.go(AppRoutes.customerHome),
+                      icon: const Icon(Icons.map_outlined, size: 18),
+                      label: const Text('View live map'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
             MCard(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               child: Column(

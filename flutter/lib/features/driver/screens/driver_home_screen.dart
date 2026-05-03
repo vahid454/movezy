@@ -872,14 +872,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               icon: Icons.support_agent,
               title: 'Customer Service',
               subtitle: 'Get help with bookings, payments, or driver issues',
-              onTap: () => _openSupportUri(AppConstants.supportWhatsApp),
+              onTap: () => _openSupportUri(AppConstants.supportWhatsAppUrl),
             ),
             const SizedBox(height: 10),
             SettingsTile(
               icon: Icons.call_outlined,
               title: 'Call Support',
-              subtitle: AppConstants.supportPhone,
-              onTap: () => _openSupportUri('tel:${AppConstants.supportPhone}'),
+              subtitle: AppConstants.supportPhoneTel,
+              onTap: () => _openSupportUri('tel:${AppConstants.supportPhoneTel}'),
             ),
             const SizedBox(height: 10),
             SettingsTile(

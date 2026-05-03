@@ -261,7 +261,38 @@ router.get('/driver/:id', authenticate, requireRole('admin'), async (req, res) =
   try {
     const driver = await Driver.findById(req.params.id).populate('user', 'name phone createdAt lastSeen');
     if (!driver) return res.status(404).json({ error: 'Driver not found' });
-    res.json({ success: true, driver: normalizeDriverDocuments(req, driver) });
+    const bookings = await Booking.find({ driver: driver._id })
+      .sort({ createdAt: -1 })
+      .limit(80)
+      .populate('customer', 'name phone')
+      .lean();
+    res.json({
+      success: true,
+      driver: normalizeDriverDocuments(req, driver),
+      bookings: bookings.map(serializeAdminBooking)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/user/:id — customer profile + recent bookings
+router.get('/user/:id', authenticate, requireRole('admin'), async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).lean();
+    if (!user || user.role !== 'customer') {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+    const bookings = await Booking.find({ customer: user._id })
+      .sort({ createdAt: -1 })
+      .limit(80)
+      .populate({ path: 'driver', select: 'name phone vehicleNumber vehicleType' })
+      .lean();
+    res.json({
+      success: true,
+      user,
+      bookings: bookings.map(serializeAdminBooking)
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -338,7 +369,7 @@ router.get('/users', authenticate, requireRole('admin'), async (req, res) => {
     const base = { role: 'customer' };
     const trimmed = `${q || ''}`.trim();
     let query = { ...base };
-    if (trimmed.length >= 2) {
+    if (trimmed.length >= 1) {
       const rx = buildTextRegex(trimmed);
       query = mergeStatusAndSearch(base, { $or: [{ name: rx }, { phone: rx }] });
     }
@@ -515,7 +546,7 @@ router.get('/commission-board', authenticate, requireRole('admin'), async (req, 
   }
 });
 
-// PUT /api/admin/user/:id/toggle
+// PUT /api/admin/user/:id/toggle  (keep after GET /user/:id — same param pattern)
 router.put('/user/:id/toggle', authenticate, requireRole('admin'), async (req, res) => {
   try {
     const user = await User.findById(req.params.id);

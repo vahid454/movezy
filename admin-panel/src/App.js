@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard';
 import Drivers from './pages/Drivers';
 import DriverDetail from './pages/DriverDetail';
 import Users from './pages/Users';
+import CustomerDetail from './pages/CustomerDetail';
 import Bookings from './pages/Bookings';
 import Commission from './pages/Commission';
 import Login from './pages/Login';
@@ -100,6 +101,7 @@ export default function App() {
                 <Route path="/drivers" element={<Drivers />} />
                 <Route path="/drivers/:id" element={<DriverDetail />} />
                 <Route path="/users" element={<Users />} />
+                <Route path="/users/:id" element={<CustomerDetail />} />
                 <Route path="/bookings" element={<Bookings />} />
                 <Route path="/commission" element={<Commission />} />
               </Routes>

@@ -122,7 +122,7 @@ export default function AdminGlobalSearch() {
                   className="admin-search-row"
                   onClick={() => {
                     setOpen(false);
-                    nav(`/users?q=${encodeURIComponent(u.phone || u.name || '')}`);
+                    nav(`/users/${u._id}`);
                   }}
                 >
                   <span className="admin-search-title">{u.name}</span>

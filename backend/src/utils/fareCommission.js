@@ -40,6 +40,30 @@ const markCommissionDue = (booking) => {
   booking.platformFeeStatus = 'due';
 };
 
+/**
+ * Customer cancel fee (INR) by trip phase. Env-tunable; capped by estimated fare.
+ * @param {{ status?: string, estimatedFare?: number }} booking
+ */
+const computeCustomerCancellationFeeInr = (booking) => {
+  const fare = Math.max(0, Math.round(Number(booking?.estimatedFare) || 0));
+  const s = `${booking?.status || ''}`;
+  if (s === 'searching') {
+    const flat = Math.max(0, Number(process.env.CUSTOMER_CANCEL_FEE_SEARCHING_FLAT || 0));
+    return Math.min(fare, flat);
+  }
+  if (s === 'accepted' || s === 'driver_arriving') {
+    const pct = Number(process.env.CUSTOMER_CANCEL_FEE_AFTER_ACCEPT_PERCENT || 25);
+    const floor = Number(process.env.CUSTOMER_CANCEL_FEE_AFTER_ACCEPT_MIN || 50);
+    return Math.min(fare, Math.max(floor, Math.round((fare * pct) / 100)));
+  }
+  if (s === 'in_progress') {
+    const pct = Number(process.env.CUSTOMER_CANCEL_FEE_MID_TRIP_PERCENT || 40);
+    const floor = Number(process.env.CUSTOMER_CANCEL_FEE_MID_TRIP_MIN || 99);
+    return Math.min(fare, Math.max(floor, Math.round((fare * pct) / 100)));
+  }
+  return 0;
+};
+
 const flagCommissionRisk = (booking, code, note) => {
   if (!booking || !code) return;
   booking.commissionRiskFlags = booking.commissionRiskFlags || [];
@@ -55,5 +79,6 @@ module.exports = {
   splitCustomerFare,
   attachFareSplit,
   markCommissionDue,
-  flagCommissionRisk
+  flagCommissionRisk,
+  computeCustomerCancellationFeeInr
 };

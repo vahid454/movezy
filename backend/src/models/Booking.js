@@ -52,6 +52,8 @@ const bookingSchema = new mongoose.Schema({
   },
   cancelledBy: { type: String, enum: ['customer', 'driver', 'admin', 'system'] },
   cancellationReason: { type: String },
+  /** Charged / owed by customer when they cancel (informational until payments wired). */
+  customerCancellationFeeInr: { type: Number },
   acceptedAt: { type: Date },
   startedAt: { type: Date },
   completedAt: { type: Date },

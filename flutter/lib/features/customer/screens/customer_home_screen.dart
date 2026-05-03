@@ -12,6 +12,7 @@ import 'package:movezy/core/widgets/widgets.dart';
 import 'package:movezy/data/datasources/api_service.dart';
 import 'package:movezy/data/models/models.dart';
 import 'package:movezy/services/session_manager.dart';
+import 'package:movezy/features/customer/utils/customer_cancel_booking_flow.dart';
 import 'package:movezy/services/socket_service.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
@@ -590,51 +591,19 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   }
 
   Future<void> _cancel() async {
-    final ok = await _confirmDialog(
-        'Cancel Booking?', 'Are you sure you want to cancel?');
-    if (!ok || _activeBooking == null) return;
-    if (_activeBooking!.isInProgress) {
-      showSnack(context, 'Cannot cancel an in-progress booking.', error: true);
-      return;
-    }
-    try {
-      await _api.cancelBooking(_activeBooking!.id);
-      setState(() {
-        _activeBooking = null;
-        _driverPhone = null;
-        _driverLatLng = null;
-      });
-      _refreshMapOverlay(fitCamera: true);
-      if (mounted) showSnack(context, 'Booking cancelled');
-    } catch (_) {
-      if (mounted) showSnack(context, 'Cancel failed', error: true);
-    }
-  }
-
-  Future<bool> _confirmDialog(String title, String body) async {
-    final res = await showDialog<bool>(
+    if (_activeBooking == null) return;
+    final r = await runCustomerCancelBookingFlow(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: AppColors.border)),
-        title:
-            Text(title, style: const TextStyle(color: AppColors.textPrimary)),
-        content:
-            Text(body, style: const TextStyle(color: AppColors.textSecondary)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('No')),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child:
-                  const Text('Yes', style: TextStyle(color: AppColors.danger))),
-        ],
-      ),
+      api: _api,
+      bookingMongoId: _activeBooking!.id,
     );
-    return res == true;
+    if (r == null || !mounted) return;
+    setState(() {
+      _activeBooking = null;
+      _driverPhone = null;
+      _driverLatLng = null;
+    });
+    _refreshMapOverlay(fitCamera: true);
   }
 
   void _callDriver() {
@@ -771,15 +740,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             SettingsTile(
               icon: Icons.support_agent,
               title: 'Customer Service',
-              subtitle: 'Talk to Movezy support for booking help',
-              onTap: () => _openSupportUri(AppConstants.supportWhatsApp),
+              subtitle: 'WhatsApp — fast help with bookings & trips',
+              onTap: () => _openSupportUri(AppConstants.supportWhatsAppUrl),
             ),
             const SizedBox(height: 10),
             SettingsTile(
               icon: Icons.call_outlined,
               title: 'Call Support',
-              subtitle: AppConstants.supportPhone,
-              onTap: () => _openSupportUri('tel:${AppConstants.supportPhone}'),
+              subtitle: AppConstants.supportPhoneTel,
+              onTap: () => _openSupportUri('tel:${AppConstants.supportPhoneTel}'),
             ),
             const SizedBox(height: 10),
             SettingsTile(

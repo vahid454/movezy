@@ -6,6 +6,7 @@ export default function DriverDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [driver, setDriver] = useState(null);
+  const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -14,7 +15,13 @@ export default function DriverDetail() {
 
   const load = () => {
     setLoading(true);
-    api.get(`/admin/driver/${id}`).then(r => setDriver(r.data.driver)).finally(() => setLoading(false));
+    api
+      .get(`/admin/driver/${id}`)
+      .then((r) => {
+        setDriver(r.data.driver);
+        setBookings(r.data.bookings || []);
+      })
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, [id]);
@@ -133,6 +140,56 @@ export default function DriverDetail() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 20, padding: 0 }}>
+        <div className="card-title" style={{ padding: '16px 20px 0' }}>
+          📦 Trips & bookings ({bookings.length} recent)
+        </div>
+        {bookings.length === 0 ? (
+          <div className="empty-state" style={{ padding: 32 }}>
+            <div className="empty-state-icon">📭</div>
+            <p>No bookings for this driver yet</p>
+          </div>
+        ) : (
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Booking ID</th>
+                  <th>Status</th>
+                  <th>Customer</th>
+                  <th>Fare</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bookings.map((b) => (
+                  <tr key={b._id}>
+                    <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>{b.bookingId}</td>
+                    <td>
+                      <span className={`badge badge-${b.status}`}>{b.status?.replace('_', ' ')}</span>
+                    </td>
+                    <td>
+                      {b.customer ? (
+                        <>
+                          <div style={{ fontWeight: 600 }}>{b.customer.name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{b.customer.phone}</div>
+                        </>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td>₹{b.estimatedFare ?? '—'}</td>
+                    <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                      {b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN') : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {showRejectModal && (

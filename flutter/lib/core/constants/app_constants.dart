@@ -39,10 +39,26 @@ class AppConstants {
   // Search
   static const int searchRadiusM = 5000;
 
-  // Support
-  static const String supportPhone = '+919876543210';
-  static const String supportEmail = 'support@movezy.in';
-  static const String supportWhatsApp = 'https://wa.me/919876543210';
+  // Support — override at build time, e.g.
+  // --dart-define=MOVEZY_SUPPORT_EMAIL=you@example.com
+  // --dart-define=MOVEZY_SUPPORT_PHONE_TEL=+918770621788
+  // --dart-define=MOVEZY_SUPPORT_WHATSAPP=918770621788  (digits only, country code included)
+  static const String supportEmail = String.fromEnvironment(
+    'MOVEZY_SUPPORT_EMAIL',
+    defaultValue: 'vahidmansuri022@gmail.com',
+  );
+  /// E.164-style for tel: and display.
+  static const String supportPhoneTel = String.fromEnvironment(
+    'MOVEZY_SUPPORT_PHONE_TEL',
+    defaultValue: '+918770621788',
+  );
+  /// WhatsApp click-to-chat (no +), e.g. 918770621788 for India.
+  static const String supportWhatsAppDigits = String.fromEnvironment(
+    'MOVEZY_SUPPORT_WHATSAPP',
+    defaultValue: '918770621788',
+  );
+  static String get supportWhatsAppUrl =>
+      'https://wa.me/$supportWhatsAppDigits';
 
   static bool get usesEmulatorLoopback =>
       baseUrl.contains('10.0.2.2') || socketUrl.contains('10.0.2.2');

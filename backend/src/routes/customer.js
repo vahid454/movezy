@@ -9,7 +9,12 @@ const { sendMulticastNotification } = require('../utils/notifications');
 const { BOOKING_STATUSES, enforceTransitionOrBypass } = require('../utils/bookingPolicy');
 const { IDEMPOTENCY_ENABLED, getIdempotencyKey } = require('../utils/idempotency');
 const { logAuditEvent } = require('../utils/auditLogger');
-const { splitCustomerFare, attachFareSplit, flagCommissionRisk } = require('../utils/fareCommission');
+const {
+  splitCustomerFare,
+  attachFareSplit,
+  flagCommissionRisk,
+  computeCustomerCancellationFeeInr
+} = require('../utils/fareCommission');
 
 const VEHICLE_FARE_CONFIG = {
   bike: { baseFare: 20, perKm: 8, minFare: 35 },
@@ -317,6 +322,36 @@ router.get('/booking/:id', authenticate, requireRole('customer'), async (req, re
   }
 });
 
+// GET /api/customer/booking-cancel-quote?bookingId=
+router.get('/booking-cancel-quote', authenticate, requireRole('customer'), async (req, res) => {
+  try {
+    const bookingId = `${req.query.bookingId || ''}`.trim();
+    if (!bookingId) return res.status(400).json({ error: 'bookingId required' });
+    const booking = await Booking.findById(bookingId).lean();
+    if (!booking || booking.customer.toString() !== req.userId.toString()) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+    if ([BOOKING_STATUSES.COMPLETED, BOOKING_STATUSES.CANCELLED].includes(booking.status)) {
+      return res.json({
+        success: true,
+        canCancel: false,
+        cancellationFeeInr: 0,
+        reason: 'Booking already finished or cancelled'
+      });
+    }
+    const cancellationFeeInr = computeCustomerCancellationFeeInr(booking);
+    return res.json({
+      success: true,
+      canCancel: true,
+      status: booking.status,
+      cancellationFeeInr,
+      estimatedFare: booking.estimatedFare
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/customer/cancel-booking
 router.post('/cancel-booking', authenticate, requireRole('customer'), async (req, res) => {
   try {
@@ -325,7 +360,7 @@ router.post('/cancel-booking', authenticate, requireRole('customer'), async (req
     if (!booking || booking.customer.toString() !== req.userId.toString()) {
       return res.status(404).json({ error: 'Booking not found' });
     }
-    if ([BOOKING_STATUSES.COMPLETED, BOOKING_STATUSES.CANCELLED, BOOKING_STATUSES.IN_PROGRESS].includes(booking.status)) {
+    if ([BOOKING_STATUSES.COMPLETED, BOOKING_STATUSES.CANCELLED].includes(booking.status)) {
       return res.status(400).json({ error: 'Cannot cancel this booking' });
     }
 
@@ -335,14 +370,23 @@ router.post('/cancel-booking', authenticate, requireRole('customer'), async (req
     }
 
     const previousStatus = booking.status;
+    const cancellationFeeInr = computeCustomerCancellationFeeInr(booking);
     booking.status = BOOKING_STATUSES.CANCELLED;
     booking.cancelledBy = 'customer';
     booking.cancellationReason = reason || 'Customer cancelled';
+    booking.customerCancellationFeeInr = cancellationFeeInr;
     if ([BOOKING_STATUSES.ACCEPTED, BOOKING_STATUSES.DRIVER_ARRIVING].includes(previousStatus)) {
       flagCommissionRisk(
         booking,
         'customer_cancelled_after_driver_accept',
         'Customer cancelled after a driver was assigned; review for possible offline settlement.'
+      );
+    }
+    if (previousStatus === BOOKING_STATUSES.IN_PROGRESS) {
+      flagCommissionRisk(
+        booking,
+        'customer_cancelled_mid_trip',
+        `Customer cancelled during trip; fee recorded ₹${cancellationFeeInr}.`
       );
     }
     await booking.save();
@@ -363,7 +407,12 @@ router.post('/cancel-booking', authenticate, requireRole('customer'), async (req
       req.io.to(`booking_${booking._id}`).emit('booking_cancelled', { bookingId: booking._id, by: 'customer' });
     }
 
-    res.json({ success: true, message: 'Booking cancelled' });
+    res.json({
+      success: true,
+      message: 'Booking cancelled',
+      cancellationFeeInr,
+      previousStatus
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
