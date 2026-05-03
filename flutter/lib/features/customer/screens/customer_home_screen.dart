@@ -1033,21 +1033,26 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             left: 0,
             right: 0,
             child: _activeBooking != null
-                ? _ActivePanel(
-                    booking: _activeBooking!,
-                    driverPhone: _driverPhone,
-                    remainingSearch:
-                        _activeBooking!.isSearching ? _searchRemaining() : null,
-                    onCall: _callDriver,
-                    onCancel: _cancel,
+                ? RepaintBoundary(
+                    child: _ActivePanel(
+                      booking: _activeBooking!,
+                      driverPhone: _driverPhone,
+                      remainingSearch: _activeBooking!.isSearching
+                          ? _searchRemaining()
+                          : null,
+                      onCall: _callDriver,
+                      onCancel: _cancel,
+                    ),
                   )
-                : _HomePanel(
+                : RepaintBoundary(
+                    child: _HomePanel(
                     nearbyDriversCount: _nearbyDrivers.length,
                     onBook: () async {
                       await context.push(AppRoutes.booking);
                       _syncDashboard(fitCamera: true);
                     },
                     onHistory: () => context.push(AppRoutes.bookingHistory),
+                  ),
                   ),
           ),
         ],
@@ -1328,9 +1333,15 @@ class _ActivePanel extends StatelessWidget {
             ]),
           ),
         ],
-        if (!booking.isInProgress && !booking.isCompleted) ...[
+        if (booking.isActive) ...[
           const SizedBox(height: 12),
-          OutlineBtn(label: '✕   Cancel Booking', onTap: onCancel, height: 44),
+          OutlineBtn(
+            label: booking.isInProgress
+                ? '✕   Cancel trip (fee may apply)'
+                : '✕   Cancel booking',
+            onTap: onCancel,
+            height: 44,
+          ),
         ],
       ]),
     );

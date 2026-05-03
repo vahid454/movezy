@@ -837,9 +837,11 @@ class _BookingScreenState extends State<BookingScreen> {
                         ),
                         TextButton(
                           onPressed: _loading ? null : _cancelActiveBooking,
-                          child: const Text(
-                            'Cancel trip',
-                            style: TextStyle(color: AppColors.danger),
+                          child: Text(
+                            _activeBooking!.isInProgress
+                                ? 'Cancel (fee may apply)'
+                                : 'Cancel trip',
+                            style: const TextStyle(color: AppColors.danger),
                           ),
                         ),
                       ],
