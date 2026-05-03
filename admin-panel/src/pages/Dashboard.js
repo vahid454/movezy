@@ -116,7 +116,7 @@ export default function Dashboard() {
 
       <div className="live-grid">
         <div className="card">
-          <div className="card-title">⚡ Live Bookings</div>
+          <div className="card-title">🚚 Live trips</div>
           {live?.bookings?.length ? (
             <div className="live-list">
               {live.bookings.map(booking => (
@@ -130,9 +130,19 @@ export default function Dashboard() {
                     </div>
                     <div className="live-meta">{booking.customer?.name || 'Unknown customer'} • {booking.vehicleType?.replace('_', ' ')}</div>
                     <div className="live-sub">{booking.pickup} → {booking.dropoff}</div>
+                    {booking.driver?.phone && (
+                      <div className="live-sub" style={{ fontWeight: 600, color: 'var(--primary)', marginTop: 4 }}>
+                        Driver {booking.driver.phone}
+                      </div>
+                    )}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontWeight: 700 }}>₹{booking.estimatedFare || 0}</div>
+                    {booking.platformFee != null && (
+                      <div className="live-meta" style={{ fontSize: 11 }}>
+                        Fee ₹{booking.platformFee} · Payout ₹{booking.driverPayout ?? '—'}
+                      </div>
+                    )}
                     <div className="live-meta">
                       {new Date(booking.updatedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                     </div>
@@ -181,6 +191,7 @@ export default function Dashboard() {
 const STATUS_COLORS = {
   searching: 'searching',
   accepted: 'accepted',
+  driver_arriving: 'driver_arriving',
   in_progress: 'in_progress',
   completed: 'completed',
   cancelled: 'cancelled'

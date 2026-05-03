@@ -8,6 +8,7 @@ export default function Drivers() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
+  const [q, setQ] = useState('');
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -18,10 +19,13 @@ export default function Drivers() {
 
   useEffect(() => {
     setLoading(true);
-    api.get('/admin/drivers', { params: { status: statusFilter, page } })
+    const params = { status: statusFilter, page };
+    const trimmed = q.trim();
+    if (trimmed.length >= 2) params.q = trimmed;
+    api.get('/admin/drivers', { params })
       .then(r => { setDrivers(r.data.drivers); setTotal(r.data.total); })
       .finally(() => setLoading(false));
-  }, [statusFilter, page]);
+  }, [statusFilter, page, q]);
 
   const totalPages = Math.ceil(total / 20);
 
@@ -32,7 +36,15 @@ export default function Drivers() {
         <p className="page-subtitle">{total} total drivers registered</p>
       </div>
 
-      <div className="filters-bar">
+      <div className="filters-bar" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+        <input
+          type="search"
+          className="admin-search-input"
+          style={{ maxWidth: 280, flex: '1 1 200px' }}
+          placeholder="Search name, phone, vehicle no., license…"
+          value={q}
+          onChange={e => { setQ(e.target.value); setPage(1); }}
+        />
         <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
           <option value="">All Status</option>
           <option value="pending">⏳ Pending</option>

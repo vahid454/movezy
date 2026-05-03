@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const User = require('../models/User');
 const Driver = require('../models/Driver');
@@ -6,6 +7,51 @@ const Booking = require('../models/Booking');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { sendPushNotification } = require('../utils/notifications');
 const { logAuditEvent } = require('../utils/auditLogger');
+const { attachFareSplit, commissionPercent } = require('../utils/fareCommission');
+
+const escapeRegex = (s) => `${s}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const buildTextRegex = (q) => new RegExp(escapeRegex(q.trim()), 'i');
+
+const bookingSearchConditions = async (q) => {
+  const trimmed = `${q || ''}`.trim();
+  if (trimmed.length < 2) return null;
+  const rx = buildTextRegex(trimmed);
+  const parts = [
+    { bookingId: rx },
+    { 'pickup.address': rx },
+    { 'dropoff.address': rx }
+  ];
+  const [custIds, drvIds] = await Promise.all([
+    User.find({ role: 'customer', $or: [{ phone: rx }, { name: rx }] }).distinct('_id').lean(),
+    Driver.find({
+      $or: [{ phone: rx }, { name: rx }, { vehicleNumber: rx }, { drivingLicense: rx }]
+    }).distinct('_id').lean()
+  ]);
+  if (custIds.length) parts.push({ customer: { $in: custIds } });
+  if (drvIds.length) parts.push({ driver: { $in: drvIds } });
+  if (mongoose.Types.ObjectId.isValid(trimmed) && `${trimmed}`.length === 24) {
+    try {
+      parts.push({ _id: new mongoose.Types.ObjectId(trimmed) });
+    } catch (_) {
+      /* ignore invalid hex */
+    }
+  }
+  return { $or: parts };
+};
+
+const serializeAdminBooking = (booking) => {
+  if (!booking) return booking;
+  const plain = typeof booking.toObject === 'function' ? booking.toObject() : { ...booking };
+  return attachFareSplit(plain);
+};
+
+const mergeStatusAndSearch = (baseFilter, searchFilter) => {
+  if (!searchFilter) return baseFilter;
+  const keys = Object.keys(baseFilter || {});
+  if (!keys.length) return searchFilter;
+  return { $and: [baseFilter, searchFilter] };
+};
 
 const toAbsoluteAssetUrl = (req, documentPath) => {
   if (!documentPath) return documentPath;
@@ -90,7 +136,9 @@ router.get('/dashboard', authenticate, requireRole('admin'), async (req, res) =>
     ]);
 
     const [liveBookings, liveDrivers] = await Promise.all([
-      Booking.find({ status: { $in: ['searching', 'accepted', 'in_progress'] } })
+      Booking.find({
+        status: { $in: ['searching', 'accepted', 'driver_arriving', 'in_progress'] }
+      })
         .populate('customer', 'name phone')
         .populate({ path: 'driver', populate: { path: 'user', select: 'name phone' } })
         .sort({ updatedAt: -1 })
@@ -119,30 +167,36 @@ router.get('/dashboard', authenticate, requireRole('admin'), async (req, res) =>
       },
       charts: { bookingsByDay, vehicleDistribution },
       live: {
-        bookings: liveBookings.map((booking) => ({
-          id: booking._id,
-          bookingId: booking.bookingId,
-          status: booking.status,
-          vehicleType: booking.vehicleType,
-          estimatedFare: booking.estimatedFare,
-          estimatedDistance: booking.estimatedDistance,
-          pickup: booking.pickup?.address,
-          dropoff: booking.dropoff?.address,
-          customer: booking.customer
-            ? {
-                name: booking.customer.name,
-                phone: booking.customer.phone
-              }
-            : null,
-          driver: booking.driver
-            ? {
-                name: booking.driver.name,
-                phone: booking.driver.phone,
-                vehicleNumber: booking.driver.vehicleNumber
-              }
-            : null,
-          updatedAt: booking.updatedAt
-        })),
+        bookings: liveBookings.map((booking) => {
+          const ser = serializeAdminBooking(booking);
+          return {
+            id: ser._id,
+            bookingId: ser.bookingId,
+            status: ser.status,
+            vehicleType: ser.vehicleType,
+            estimatedFare: ser.estimatedFare,
+            estimatedDistance: ser.estimatedDistance,
+            platformFee: ser.platformFee,
+            driverPayout: ser.driverPayout,
+            platformFeeStatus: ser.platformFeeStatus,
+            pickup: ser.pickup?.address,
+            dropoff: ser.dropoff?.address,
+            customer: ser.customer
+              ? {
+                  name: ser.customer.name,
+                  phone: ser.customer.phone
+                }
+              : null,
+            driver: ser.driver
+              ? {
+                  name: ser.driver.name,
+                  phone: ser.driver.phone,
+                  vehicleNumber: ser.driver.vehicleNumber
+                }
+              : null,
+            updatedAt: ser.updatedAt
+          };
+        }),
         drivers: liveDrivers.map((driver) => ({
           id: driver._id,
           name: driver.name,
@@ -165,20 +219,37 @@ router.get('/dashboard', authenticate, requireRole('admin'), async (req, res) =>
 // GET /api/admin/drivers
 router.get('/drivers', authenticate, requireRole('admin'), async (req, res) => {
   try {
-    const { status, page = 1, limit = 20 } = req.query;
-    const query = {};
-    if (status) query.approvalStatus = status;
+    const { status, page = 1, limit = 20, q } = req.query;
+    const base = {};
+    if (status) base.approvalStatus = status;
+    const trimmed = `${q || ''}`.trim();
+    let query = { ...base };
+    if (trimmed.length >= 2) {
+      const rx = buildTextRegex(trimmed);
+      const search = {
+        $or: [
+          { name: rx },
+          { phone: rx },
+          { vehicleNumber: rx },
+          { drivingLicense: rx },
+          { vehicleModel: rx }
+        ]
+      };
+      query = mergeStatusAndSearch(base, search);
+    }
+    const lim = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const pg = Math.max(1, parseInt(page, 10) || 1);
     const drivers = await Driver.find(query)
       .populate('user', 'name phone createdAt')
       .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit));
+      .skip((pg - 1) * lim)
+      .limit(lim);
     const total = await Driver.countDocuments(query);
     res.json({
       success: true,
       drivers: drivers.map((driver) => normalizeDriverDocuments(req, driver)),
       total,
-      pages: Math.ceil(total / limit)
+      pages: Math.ceil(total / lim)
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -263,12 +334,21 @@ router.put('/driver/:id/reject', authenticate, requireRole('admin'), async (req,
 // GET /api/admin/users
 router.get('/users', authenticate, requireRole('admin'), async (req, res) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-    const users = await User.find({ role: 'customer' })
+    const { page = 1, limit = 20, q } = req.query;
+    const base = { role: 'customer' };
+    const trimmed = `${q || ''}`.trim();
+    let query = { ...base };
+    if (trimmed.length >= 2) {
+      const rx = buildTextRegex(trimmed);
+      query = mergeStatusAndSearch(base, { $or: [{ name: rx }, { phone: rx }] });
+    }
+    const lim = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const pg = Math.max(1, parseInt(page, 10) || 1);
+    const users = await User.find(query)
       .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit));
-    const total = await User.countDocuments({ role: 'customer' });
+      .skip((pg - 1) * lim)
+      .limit(lim);
+    const total = await User.countDocuments(query);
     res.json({ success: true, users, total });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -278,17 +358,158 @@ router.get('/users', authenticate, requireRole('admin'), async (req, res) => {
 // GET /api/admin/bookings
 router.get('/bookings', authenticate, requireRole('admin'), async (req, res) => {
   try {
-    const { status, page = 1, limit = 20 } = req.query;
-    const query = {};
-    if (status) query.status = status;
+    const { status, page = 1, limit = 20, q } = req.query;
+    const base = {};
+    if (status) base.status = status;
+    const search = await bookingSearchConditions(q);
+    const query = mergeStatusAndSearch(base, search);
+    const lim = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const pg = Math.max(1, parseInt(page, 10) || 1);
     const bookings = await Booking.find(query)
       .populate('customer', 'name phone')
       .populate({ path: 'driver', populate: { path: 'user', select: 'name phone' } })
       .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit));
+      .skip((pg - 1) * lim)
+      .limit(lim);
     const total = await Booking.countDocuments(query);
-    res.json({ success: true, bookings, total });
+    res.json({
+      success: true,
+      bookings: bookings.map(serializeAdminBooking),
+      total
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/search — quick lookup across customers, drivers, bookings
+router.get('/search', authenticate, requireRole('admin'), async (req, res) => {
+  try {
+    const q = `${req.query.q || ''}`.trim();
+    if (q.length < 2) {
+      return res.json({ success: true, users: [], drivers: [], bookings: [] });
+    }
+    const rx = buildTextRegex(q);
+    const bookingMatch = await bookingSearchConditions(q);
+    const [users, drivers, bookingsRaw] = await Promise.all([
+      User.find({ role: 'customer', $or: [{ name: rx }, { phone: rx }] })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .select('name phone isActive createdAt')
+        .lean(),
+      Driver.find({
+        $or: [{ name: rx }, { phone: rx }, { vehicleNumber: rx }, { drivingLicense: rx }]
+      })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .select('name phone vehicleNumber vehicleType approvalStatus')
+        .lean(),
+      bookingMatch
+        ? Booking.find(bookingMatch)
+            .sort({ updatedAt: -1 })
+            .limit(10)
+            .populate('customer', 'name phone')
+            .populate({ path: 'driver', populate: { path: 'user', select: 'name phone' } })
+            .lean()
+        : Promise.resolve([])
+    ]);
+    res.json({
+      success: true,
+      users,
+      drivers,
+      bookings: bookingsRaw.map(serializeAdminBooking)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/commission-board — platform fee totals (completed trips)
+router.get('/commission-board', authenticate, requireRole('admin'), async (req, res) => {
+  try {
+    const pct = commissionPercent();
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const effPlatform = {
+      $cond: [
+        { $gt: [{ $ifNull: ['$platformFee', 0] }, 0] },
+        '$platformFee',
+        {
+          $round: [
+            { $divide: [{ $multiply: [{ $ifNull: ['$estimatedFare', 0] }, pct] }, 100] },
+            0
+          ]
+        }
+      ]
+    };
+    const [summary, byStatus, last30Days, activeTrips] = await Promise.all([
+      Booking.aggregate([
+        { $match: { status: 'completed' } },
+        { $addFields: { effPlatform } },
+        {
+          $group: {
+            _id: null,
+            trips: { $sum: 1 },
+            totalCustomerPaid: { $sum: { $ifNull: ['$estimatedFare', 0] } },
+            totalPlatform: { $sum: '$effPlatform' }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            trips: 1,
+            totalCustomerPaid: 1,
+            totalPlatform: 1,
+            totalDriverPayout: { $subtract: ['$totalCustomerPaid', '$totalPlatform'] }
+          }
+        }
+      ]),
+      Booking.aggregate([
+        { $match: { status: 'completed' } },
+        { $addFields: { effPlatform } },
+        {
+          $group: {
+            _id: '$platformFeeStatus',
+            count: { $sum: 1 },
+            platformTotal: { $sum: '$effPlatform' }
+          }
+        }
+      ]),
+      Booking.aggregate([
+        {
+          $match: {
+            status: 'completed',
+            completedAt: { $gte: thirtyDaysAgo }
+          }
+        },
+        { $addFields: { effPlatform } },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$completedAt' } },
+            trips: { $sum: 1 },
+            platformFee: { $sum: '$effPlatform' },
+            customerPaid: { $sum: { $ifNull: ['$estimatedFare', 0] } }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]),
+      Booking.countDocuments({
+        status: { $in: ['searching', 'accepted', 'driver_arriving', 'in_progress'] }
+      })
+    ]);
+
+    res.json({
+      success: true,
+      commissionPercent: pct,
+      summary: summary[0] || {
+        trips: 0,
+        totalCustomerPaid: 0,
+        totalPlatform: 0,
+        totalDriverPayout: 0
+      },
+      byStatus,
+      last30Days,
+      activeTrips
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

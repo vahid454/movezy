@@ -5,7 +5,9 @@ import Drivers from './pages/Drivers';
 import DriverDetail from './pages/DriverDetail';
 import Users from './pages/Users';
 import Bookings from './pages/Bookings';
+import Commission from './pages/Commission';
 import Login from './pages/Login';
+import AdminGlobalSearch from './components/AdminGlobalSearch';
 import './App.css';
 
 const PrivateRoute = ({ children }) => {
@@ -16,6 +18,7 @@ const PrivateRoute = ({ children }) => {
 const Sidebar = ({ onLogout, theme, onToggleTheme }) => {
   const navItems = [
     { to: '/', label: 'Dashboard', icon: '📊' },
+    { to: '/commission', label: 'Commission', icon: '🚚' },
     { to: '/drivers', label: 'Drivers', icon: '🚗' },
     { to: '/users', label: 'Customers', icon: '👥' },
     { to: '/bookings', label: 'Bookings', icon: '📦' },
@@ -24,7 +27,7 @@ const Sidebar = ({ onLogout, theme, onToggleTheme }) => {
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        <span className="logo-icon">⚡</span>
+        <span className="logo-icon">🚚</span>
         <span className="logo-text">Movezy</span>
         <span className="logo-badge">Admin</span>
       </div>
@@ -58,9 +61,12 @@ const Layout = ({ children, theme, onToggleTheme }) => {
       <Sidebar onLogout={handleLogout} theme={theme} onToggleTheme={onToggleTheme} />
       <main className="main-content">
         <div className="topbar">
-          <div>
-            <div className="topbar-title">Operations Console</div>
-            <div className="topbar-subtitle">Movezy live dispatch and booking control</div>
+          <div className="topbar-cluster">
+            <div>
+              <div className="topbar-title">Operations Console</div>
+              <div className="topbar-subtitle">Movezy live dispatch and booking control</div>
+            </div>
+            <AdminGlobalSearch />
           </div>
           <div className="topbar-theme">{theme === 'light' ? 'Light' : 'Dark'} mode</div>
         </div>
@@ -95,6 +101,7 @@ export default function App() {
                 <Route path="/drivers/:id" element={<DriverDetail />} />
                 <Route path="/users" element={<Users />} />
                 <Route path="/bookings" element={<Bookings />} />
+                <Route path="/commission" element={<Commission />} />
               </Routes>
             </Layout>
           </PrivateRoute>

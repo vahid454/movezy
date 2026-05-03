@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:movezy/core/constants/app_constants.dart';
 import 'package:movezy/core/theme/app_theme.dart';
+import 'package:movezy/core/widgets/movezy_tempo_mark.dart';
 import 'package:movezy/core/widgets/widgets.dart';
 
 class _Page {
@@ -34,11 +35,11 @@ const _pages = [
     accent: AppColors.primary,
   ),
   _Page(
-    emoji: '⚡',
+    emoji: '🚚',
     title: 'Drivers matched\nin seconds',
     sub: 'Nearby approved drivers see your request instantly and head your way.',
     chip: 'Live map · quick dispatch',
-    chipIcon: Icons.bolt_rounded,
+    chipIcon: Icons.local_shipping_rounded,
     accent: Color(0xFFF59E0B),
   ),
   _Page(
@@ -167,6 +168,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     animation: _motionCtrl,
                     accent: p.accent,
                     emoji: p.emoji,
+                    useTempoBrand: i == 1,
                   ),
                   const SizedBox(height: 28),
                   Text(
@@ -203,7 +205,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     ),
                     child: Row(
                       children: [
-                        Icon(p.chipIcon, color: p.accent, size: 22),
+                        if (i == 1)
+                          MovezyTempoMark(size: 22, truckColor: p.accent)
+                        else
+                          Icon(p.chipIcon, color: p.accent, size: 22),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
@@ -293,11 +298,13 @@ class _MovingHeroBadge extends StatelessWidget {
   final Animation<double> animation;
   final Color accent;
   final String emoji;
+  final bool useTempoBrand;
 
   const _MovingHeroBadge({
     required this.animation,
     required this.accent,
     required this.emoji,
+    this.useTempoBrand = false,
   });
 
   @override
@@ -354,7 +361,9 @@ class _MovingHeroBadge extends StatelessWidget {
                 ),
               ),
             ),
-            Text(emoji, style: const TextStyle(fontSize: 58)),
+            useTempoBrand
+                ? MovezyTempoMark(size: 56, truckColor: accent)
+                : Text(emoji, style: const TextStyle(fontSize: 58)),
           ],
         ),
       ),

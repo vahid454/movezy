@@ -1,22 +1,51 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 
-const STATUS_COLORS = { searching: 'searching', accepted: 'accepted', in_progress: 'in_progress', completed: 'completed', cancelled: 'cancelled' };
+const STATUS_COLORS = {
+  searching: 'searching',
+  accepted: 'accepted',
+  driver_arriving: 'driver_arriving',
+  in_progress: 'in_progress',
+  completed: 'completed',
+  cancelled: 'cancelled'
+};
 
 export default function Bookings() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [bookings, setBookings] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
+  const [q, setQ] = useState(() => searchParams.get('q') || '');
   const [selected, setSelected] = useState(null);
 
   useEffect(() => {
+    const urlQ = searchParams.get('q') || '';
+    setQ(urlQ);
+  }, [searchParams]);
+
+  useEffect(() => {
     setLoading(true);
-    api.get('/admin/bookings', { params: { status: statusFilter, page } })
+    const urlQ = (searchParams.get('q') || '').trim();
+    const localQ = q.trim();
+    const trimmed = localQ.length >= 2 ? localQ : urlQ.length >= 2 ? urlQ : '';
+    const params = { status: statusFilter, page };
+    if (trimmed.length >= 2) params.q = trimmed;
+    api.get('/admin/bookings', { params })
       .then(r => { setBookings(r.data.bookings); setTotal(r.data.total); })
       .finally(() => setLoading(false));
-  }, [statusFilter, page]);
+  }, [statusFilter, page, q, searchParams]);
+
+  const syncQToUrl = (next) => {
+    setQ(next);
+    setPage(1);
+    const sp = new URLSearchParams(searchParams);
+    if (next.trim().length >= 2) sp.set('q', next.trim());
+    else sp.delete('q');
+    setSearchParams(sp, { replace: true });
+  };
 
   return (
     <div>
@@ -25,11 +54,20 @@ export default function Bookings() {
         <p className="page-subtitle">{total} total bookings</p>
       </div>
 
-      <div className="filters-bar">
+      <div className="filters-bar" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+        <input
+          type="search"
+          className="admin-search-input"
+          style={{ maxWidth: 280, flex: '1 1 200px' }}
+          placeholder="Search booking ID, phone, address, vehicle…"
+          value={q}
+          onChange={e => syncQToUrl(e.target.value)}
+        />
         <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
           <option value="">All Status</option>
           <option value="searching">🔍 Searching</option>
           <option value="accepted">✔️ Accepted</option>
+          <option value="driver_arriving">🛻 Driver arriving</option>
           <option value="in_progress">🚗 In Progress</option>
           <option value="completed">✅ Completed</option>
           <option value="cancelled">❌ Cancelled</option>
@@ -45,7 +83,7 @@ export default function Bookings() {
           <div className="table-wrapper">
             <table>
               <thead>
-                <tr><th>Booking ID</th><th>Customer</th><th>Driver</th><th>Vehicle</th><th>Status</th><th>Fare (Est.)</th><th>Distance</th><th>Date</th><th></th></tr>
+                <tr><th>Booking ID</th><th>Customer</th><th>Driver</th><th>Driver phone</th><th>Vehicle</th><th>Status</th><th>Fare</th><th>Platform / Driver</th><th>Distance</th><th>Date</th><th></th></tr>
               </thead>
               <tbody>
                 {bookings.map(b => (
@@ -63,9 +101,17 @@ export default function Bookings() {
                         </>
                       ) : <span style={{ color: 'var(--text-secondary)' }}>—</span>}
                     </td>
+                    <td style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                      {b.driver?.phone || '—'}
+                    </td>
                     <td style={{ textTransform: 'capitalize' }}>{b.vehicleType?.replace('_', ' ')}</td>
-                    <td><span className={`badge badge-${STATUS_COLORS[b.status]}`}>{b.status?.replace('_', ' ')}</span></td>
-                    <td style={{ fontWeight: 600 }}>₹{b.estimatedFare || '—'}</td>
+                    <td><span className={`badge badge-${STATUS_COLORS[b.status] || b.status}`}>{b.status?.replace('_', ' ')}</span></td>
+                    <td style={{ fontWeight: 600 }}>₹{b.estimatedFare ?? '—'}</td>
+                    <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                      {b.platformFee != null ? (
+                        <>₹{b.platformFee} / ₹{b.driverPayout ?? '—'}</>
+                      ) : '—'}
+                    </td>
                     <td style={{ color: 'var(--text-secondary)' }}>{b.estimatedDistance ? `${b.estimatedDistance} km` : '—'}</td>
                     <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{new Date(b.createdAt).toLocaleDateString('en-IN')}</td>
                     <td><button className="btn btn-ghost btn-sm" onClick={e => { e.stopPropagation(); setSelected(b); }}>Details</button></td>
@@ -90,10 +136,16 @@ export default function Bookings() {
           <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
             <div className="modal-title">📦 Booking Details</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--primary)', marginBottom: 12 }}>{selected.bookingId}</div>
-            <div className="info-row"><span className="info-label">Status</span><span className={`badge badge-${selected.status}`}>{selected.status?.replace('_', ' ')}</span></div>
+            <div className="info-row"><span className="info-label">Status</span><span className={`badge badge-${STATUS_COLORS[selected.status] || selected.status}`}>{selected.status?.replace('_', ' ')}</span></div>
             <div className="info-row"><span className="info-label">Vehicle Type</span><span style={{ textTransform: 'capitalize' }}>{selected.vehicleType?.replace('_', ' ')}</span></div>
             <div className="info-row"><span className="info-label">Customer</span><span>{selected.customer?.name} ({selected.customer?.phone})</span></div>
             <div className="info-row"><span className="info-label">Driver</span><span>{selected.driver ? `${selected.driver.name} · ${selected.driver.vehicleNumber}` : 'Not assigned'}</span></div>
+            {selected.driver?.phone && (
+              <div className="info-row"><span className="info-label">Driver phone</span><span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{selected.driver.phone}</span></div>
+            )}
+            {(selected.platformFee != null || selected.driverPayout != null) && (
+              <div className="info-row"><span className="info-label">Commission split</span><span>Platform ₹{selected.platformFee ?? '—'} · Driver ₹{selected.driverPayout ?? '—'} ({selected.platformFeeStatus || '—'})</span></div>
+            )}
             <div className="info-row"><span className="info-label">Pickup</span><span style={{ fontSize: 13 }}>{selected.pickup?.address}</span></div>
             <div className="info-row"><span className="info-label">Drop-off</span><span style={{ fontSize: 13 }}>{selected.dropoff?.address}</span></div>
             <div className="info-row"><span className="info-label">Est. Distance</span><span>{selected.estimatedDistance} km</span></div>

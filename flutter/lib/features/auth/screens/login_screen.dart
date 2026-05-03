@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:movezy/core/constants/app_constants.dart';
 import 'package:movezy/core/theme/app_theme.dart';
+import 'package:movezy/core/widgets/movezy_tempo_mark.dart';
 import 'package:movezy/core/widgets/widgets.dart';
 import 'package:movezy/data/datasources/api_service.dart';
 import 'package:movezy/data/models/models.dart';
@@ -102,8 +103,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: AppColors.primary.withValues(alpha: 0.4),
                       ),
                     ),
-                    child: const Center(
-                        child: Text('⚡', style: TextStyle(fontSize: 22))),
+                    child: const Center(child: MovezyTempoMark(size: 22)),
                   ),
                   const SizedBox(width: 12),
                   const Text('Movezy',

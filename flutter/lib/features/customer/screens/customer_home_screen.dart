@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:movezy/core/constants/app_constants.dart';
 import 'package:movezy/core/utils/vehicle_map_icons.dart';
 import 'package:movezy/core/theme/app_theme.dart';
+import 'package:movezy/core/widgets/movezy_tempo_mark.dart';
 import 'package:movezy/core/widgets/widgets.dart';
 import 'package:movezy/data/datasources/api_service.dart';
 import 'package:movezy/data/models/models.dart';
@@ -1131,9 +1132,7 @@ class _DashboardHero extends StatelessWidget {
               color: AppColors.primaryGlow,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: const Center(
-              child: Text('⚡', style: TextStyle(fontSize: 20)),
-            ),
+            child: const Center(child: MovezyTempoMark(size: 20)),
           ),
           const SizedBox(width: 12),
           Expanded(

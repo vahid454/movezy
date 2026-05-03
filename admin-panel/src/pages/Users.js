@@ -1,23 +1,46 @@
 // Users.js
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 
 export function Users() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [users, setUsers] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
 
-  const load = () => {
-    setLoading(true);
-    api.get('/admin/users', { params: { page } }).then(r => { setUsers(r.data.users); setTotal(r.data.total); }).finally(() => setLoading(false));
-  };
+  const qRaw = searchParams.get('q') || '';
+  const qTrim = qRaw.trim();
 
-  useEffect(() => { load(); }, [page]);
+  useEffect(() => {
+    setLoading(true);
+    const params = { page };
+    if (qTrim.length >= 2) params.q = qTrim;
+    api
+      .get('/admin/users', { params })
+      .then((r) => {
+        setUsers(r.data.users);
+        setTotal(r.data.total);
+      })
+      .finally(() => setLoading(false));
+  }, [page, searchParams]);
+
+  const onSearchChange = (next) => {
+    setPage(1);
+    const sp = new URLSearchParams(searchParams);
+    if (next.trim().length >= 2) sp.set('q', next.trim());
+    else sp.delete('q');
+    setSearchParams(sp, { replace: true });
+  };
 
   const toggle = async (id) => {
     await api.put(`/admin/user/${id}/toggle`);
-    load();
+    const params = { page };
+    if (qTrim.length >= 2) params.q = qTrim;
+    const r = await api.get('/admin/users', { params });
+    setUsers(r.data.users);
+    setTotal(r.data.total);
   };
 
   return (
@@ -25,6 +48,16 @@ export function Users() {
       <div className="page-header">
         <h1 className="page-title">Customers</h1>
         <p className="page-subtitle">{total} registered customers</p>
+      </div>
+      <div className="filters-bar" style={{ marginBottom: 16 }}>
+        <input
+          type="search"
+          className="admin-search-input"
+          style={{ maxWidth: 360 }}
+          placeholder="Search by name or phone…"
+          value={qRaw}
+          onChange={e => onSearchChange(e.target.value)}
+        />
       </div>
       <div className="card" style={{ padding: 0 }}>
         {loading ? (

@@ -15,7 +15,7 @@ const createLimiter = ({ windowMs, max, message }) => rateLimit({
 
 const createApiLimiter = () => createLimiter({
   windowMs: 15 * 60 * 1000,
-  max: toPositiveNumber(process.env.RATE_LIMIT_MAX, 100),
+  max: toPositiveNumber(process.env.RATE_LIMIT_MAX, 200),
   message: 'Too many requests, please try again later.'
 });
 

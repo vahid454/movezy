@@ -42,6 +42,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   LatLng? _customerLatLng;
   final _api = ApiService();
   Map<String, BitmapDescriptor> _vehicleBmps = {};
+  Map<String, BitmapDescriptor> _vehicleBmpsCompact = {};
   List<Map<String, dynamic>> _openNearby = const [];
   Timer? _openBookingsPoll;
 
@@ -93,14 +94,30 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     try {
       await VehicleMapIcons.preloadAll();
       final m = <String, BitmapDescriptor>{};
+      final compact = <String, BitmapDescriptor>{};
       for (final v in kVehicles) {
         m[v.type] = await VehicleMapIcons.forVehicleType(v.type);
+        compact[v.type] = await VehicleMapIcons.forVehicleType(
+          v.type,
+          logicalSide: VehicleMapIcons.kLogicalSideCompact,
+        );
       }
       if (mounted) {
-        setState(() => _vehicleBmps = m);
+        setState(() {
+          _vehicleBmps = m;
+          _vehicleBmpsCompact = compact;
+        });
         _refreshMapOverlay();
       }
     } catch (_) {}
+  }
+
+  BitmapDescriptor? _mapVehicleIcon(String? vehicleType) {
+    final t = (vehicleType ?? '').trim();
+    if (t.isNotEmpty && _vehicleBmpsCompact[t] != null) {
+      return _vehicleBmpsCompact[t];
+    }
+    return _vehicleBmpsCompact['auto'] ?? _vehicleBmps[t.isNotEmpty ? t : 'auto'];
   }
 
   void _syncOpenBookingsPoll() {
@@ -301,7 +318,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         Marker(
           markerId: const MarkerId('driver'),
           position: LatLng(_pos!.latitude, _pos!.longitude),
-          icon: _vehicleBmps[vt] ??
+          icon: _mapVehicleIcon(vt) ??
               BitmapDescriptor.defaultMarkerWithHue(
                 BitmapDescriptor.hueYellow,
               ),
@@ -321,7 +338,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           Marker(
             markerId: MarkerId('open_$id'),
             position: LatLng(lat, lng),
-            icon: _vehicleBmps[vt] ??
+            icon: _mapVehicleIcon(vt) ??
                 BitmapDescriptor.defaultMarkerWithHue(
                   BitmapDescriptor.hueOrange,
                 ),

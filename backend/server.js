@@ -85,7 +85,13 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 const startServer = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/movezy');
+    const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/movezy';
+    const maxPool = Number(process.env.MONGO_MAX_POOL_SIZE);
+    await mongoose.connect(mongoUri, {
+      maxPoolSize: Number.isFinite(maxPool) && maxPool > 5 ? maxPool : 50,
+      minPoolSize: Number(process.env.MONGO_MIN_POOL_SIZE) || 2,
+      serverSelectionTimeoutMS: 8000
+    });
     console.log('✅ MongoDB connected');
     await dropLegacyBookingGeoIndexes(mongoose.connection);
     try {

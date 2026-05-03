@@ -26,7 +26,7 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-logo">
-          <div className="logo-big">⚡</div>
+          <div className="logo-big">🚚</div>
           <h1>Movezy</h1>
           <p>Admin Control Panel</p>
         </div>
