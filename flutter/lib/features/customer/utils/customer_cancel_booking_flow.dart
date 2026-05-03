@@ -1,7 +1,19 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:movezy/core/theme/app_theme.dart';
 import 'package:movezy/core/widgets/widgets.dart';
 import 'package:movezy/data/datasources/api_service.dart';
+
+String? _apiErrorMessage(Object e) {
+  if (e is DioException) {
+    final data = e.response?.data;
+    if (data is Map && data['error'] != null) {
+      return data['error'].toString();
+    }
+    return e.message;
+  }
+  return null;
+}
 
 /// Outcome after a successful API cancel (fee is informational until payments are wired).
 class CustomerCancelBookingResult {
@@ -37,17 +49,26 @@ Future<bool> _confirmCancelDialog(BuildContext context, String title, String bod
 }
 
 /// Quote → confirm → cancel. Shows snackbars; returns result on success, null otherwise.
+/// [bookingRef] — Mongo booking `_id` or human `bookingId` (e.g. MV…).
 Future<CustomerCancelBookingResult?> runCustomerCancelBookingFlow({
   required BuildContext context,
   required ApiService api,
-  required String bookingMongoId,
+  required String bookingRef,
 }) async {
+  final ref = bookingRef.trim();
+  if (ref.isEmpty) {
+    if (context.mounted) {
+      showSnack(context, 'Missing booking reference', error: true);
+    }
+    return null;
+  }
   Map<String, dynamic>? quote;
   try {
-    quote = await api.getBookingCancelQuote(bookingMongoId);
-  } catch (_) {
+    quote = await api.getBookingCancelQuote(ref);
+  } catch (e) {
     if (context.mounted) {
-      showSnack(context, 'Could not load cancel details. Try again.', error: true);
+      final msg = _apiErrorMessage(e) ?? 'Could not load cancel details. Try again.';
+      showSnack(context, msg, error: true);
     }
     return null;
   }
@@ -67,7 +88,7 @@ Future<CustomerCancelBookingResult?> runCustomerCancelBookingFlow({
   final ok = await _confirmCancelDialog(context, 'Cancel this booking?', body);
   if (!ok || !context.mounted) return null;
   try {
-    final res = await api.cancelBooking(bookingMongoId);
+    final res = await api.cancelBooking(ref);
     final charged = (res['cancellationFeeInr'] as num?)?.round() ?? fee;
     if (context.mounted) {
       showSnack(
@@ -78,9 +99,10 @@ Future<CustomerCancelBookingResult?> runCustomerCancelBookingFlow({
       );
     }
     return CustomerCancelBookingResult(cancellationFeeInr: charged);
-  } catch (_) {
+  } catch (e) {
     if (context.mounted) {
-      showSnack(context, 'Cancel failed', error: true);
+      final msg = _apiErrorMessage(e) ?? 'Cancel failed';
+      showSnack(context, msg, error: true);
     }
     return null;
   }

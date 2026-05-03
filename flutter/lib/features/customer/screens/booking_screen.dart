@@ -84,10 +84,12 @@ class _BookingScreenState extends State<BookingScreen> {
 
   Future<void> _cancelActiveBooking() async {
     if (_activeBooking == null) return;
+    final b = _activeBooking!;
+    final ref = b.id.trim().isNotEmpty ? b.id : b.bookingId;
     final r = await runCustomerCancelBookingFlow(
       context: context,
       api: _api,
-      bookingMongoId: _activeBooking!.id,
+      bookingRef: ref,
     );
     if (r == null || !mounted) return;
     setState(() => _activeBooking = null);

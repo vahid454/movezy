@@ -546,6 +546,64 @@ router.get('/commission-board', authenticate, requireRole('admin'), async (req, 
   }
 });
 
+// POST /api/admin/booking/:id/cancel — force-cancel any non-terminal trip (ops)
+router.post('/booking/:id/cancel', authenticate, requireRole('admin'), async (req, res) => {
+  try {
+    const raw = `${req.params.id || ''}`.trim();
+    const { reason } = req.body || {};
+    if (!raw) return res.status(400).json({ error: 'Booking id required' });
+
+    let booking = null;
+    if (mongoose.Types.ObjectId.isValid(raw) && raw.length === 24) {
+      booking = await Booking.findById(raw);
+    }
+    if (!booking) {
+      booking = await Booking.findOne({ bookingId: raw });
+    }
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    if (['completed', 'cancelled'].includes(booking.status)) {
+      return res.status(400).json({ error: 'Booking is already completed or cancelled' });
+    }
+
+    const previousStatus = booking.status;
+    booking.status = 'cancelled';
+    booking.cancelledBy = 'admin';
+    booking.cancellationReason = reason || 'Cancelled by admin';
+
+    const driverRef = booking.driver?._id ?? booking.driver;
+    if (driverRef) {
+      const driver = await Driver.findById(driverRef);
+      if (driver) {
+        driver.isAvailable = true;
+        await driver.save();
+      }
+    }
+
+    await booking.save();
+    logAuditEvent({
+      req,
+      action: 'admin_cancel_booking',
+      entityType: 'booking',
+      entityId: booking._id,
+      metadata: {
+        reason: booking.cancellationReason,
+        previousStatus
+      }
+    });
+
+    if (req.io) {
+      req.io.to(`booking_${booking._id}`).emit('booking_cancelled', {
+        bookingId: booking._id,
+        by: 'admin'
+      });
+    }
+
+    res.json({ success: true, message: 'Booking cancelled', booking: serializeAdminBooking(booking) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // PUT /api/admin/user/:id/toggle  (keep after GET /user/:id — same param pattern)
 router.put('/user/:id/toggle', authenticate, requireRole('admin'), async (req, res) => {
   try {

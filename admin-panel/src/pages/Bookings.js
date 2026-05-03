@@ -20,6 +20,8 @@ export default function Bookings() {
   const [statusFilter, setStatusFilter] = useState('');
   const [q, setQ] = useState(() => searchParams.get('q') || '');
   const [selected, setSelected] = useState(null);
+  const [adminCancelReason, setAdminCancelReason] = useState('');
+  const [adminCancelLoading, setAdminCancelLoading] = useState(false);
 
   useEffect(() => {
     const urlQ = searchParams.get('q') || '';
@@ -155,8 +157,54 @@ export default function Bookings() {
             {selected.customerRating && <div className="info-row"><span className="info-label">Customer Rating</span><span>{'⭐'.repeat(selected.customerRating)} ({selected.customerRating}/5)</span></div>}
             <div className="info-row"><span className="info-label">Created</span><span>{new Date(selected.createdAt).toLocaleString('en-IN')}</span></div>
             {selected.completedAt && <div className="info-row"><span className="info-label">Completed</span><span>{new Date(selected.completedAt).toLocaleString('en-IN')}</span></div>}
+            {selected.status !== 'completed' && selected.status !== 'cancelled' && (
+              <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Admin: cancel this trip</div>
+                <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
+                  Cancels immediately for customer and driver (use for stuck jobs or disputes).
+                </p>
+                <input
+                  type="text"
+                  className="admin-search-input"
+                  style={{ marginBottom: 10 }}
+                  placeholder="Reason (shown on booking)…"
+                  value={adminCancelReason}
+                  onChange={e => setAdminCancelReason(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  disabled={adminCancelLoading}
+                  onClick={async () => {
+                    if (!window.confirm('Cancel this booking for everyone? This cannot be undone.')) return;
+                    setAdminCancelLoading(true);
+                    try {
+                      await api.post(`/admin/booking/${selected._id}/cancel`, {
+                        reason: adminCancelReason.trim() || 'Cancelled by admin'
+                      });
+                      setSelected(null);
+                      setAdminCancelReason('');
+                      const urlQ = (searchParams.get('q') || '').trim();
+                      const params = { status: statusFilter, page };
+                      const localQ = q.trim();
+                      const trimmed = localQ.length >= 2 ? localQ : urlQ.length >= 2 ? urlQ : '';
+                      if (trimmed.length >= 2) params.q = trimmed;
+                      const r = await api.get('/admin/bookings', { params });
+                      setBookings(r.data.bookings);
+                      setTotal(r.data.total);
+                    } catch (e) {
+                      window.alert(e.response?.data?.error || e.message || 'Cancel failed');
+                    } finally {
+                      setAdminCancelLoading(false);
+                    }
+                  }}
+                >
+                  {adminCancelLoading ? 'Cancelling…' : 'Cancel booking'}
+                </button>
+              </div>
+            )}
             <div className="modal-actions">
-              <button className="btn btn-ghost" onClick={() => setSelected(null)}>Close</button>
+              <button className="btn btn-ghost" onClick={() => { setSelected(null); setAdminCancelReason(''); }}>Close</button>
             </div>
           </div>
         </div>

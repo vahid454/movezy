@@ -218,18 +218,21 @@ class ApiService {
     return BookingModel.fromJson(data['booking'] as Map<String, dynamic>);
   }
 
-  Future<Map<String, dynamic>> getBookingCancelQuote(String bookingId) async {
+  Future<Map<String, dynamic>> getBookingCancelQuote(String bookingRef) async {
     final r = await _dio.get(
       '/customer/booking-cancel-quote',
-      queryParameters: {'bookingId': bookingId},
+      queryParameters: {'bookingId': bookingRef, 'id': bookingRef},
     );
     return r.data as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> cancelBooking(String id,
+  Future<Map<String, dynamic>> cancelBooking(String bookingRef,
       {String reason = 'Customer cancelled'}) async {
-    final r = await _dio.post('/customer/cancel-booking',
-        data: {'bookingId': id, 'reason': reason});
+    final r = await _dio.post('/customer/cancel-booking', data: {
+      'bookingId': bookingRef,
+      'id': bookingRef,
+      'reason': reason,
+    });
     return r.data as Map<String, dynamic>;
   }
 

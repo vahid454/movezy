@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const User = require('../models/User');
@@ -15,6 +16,21 @@ const {
   flagCommissionRisk,
   computeCustomerCancellationFeeInr
 } = require('../utils/fareCommission');
+
+/** Load booking for this customer by Mongo _id (24 hex) or human bookingId (e.g. MV…). */
+const findCustomerBookingRef = async (userId, ref) => {
+  const r = `${ref || ''}`.trim();
+  if (!r) return null;
+  const isOid = mongoose.Types.ObjectId.isValid(r) && String(r).length === 24;
+  const query = isOid ? { _id: r, customer: userId } : { bookingId: r, customer: userId };
+  return Booking.findOne(query);
+};
+
+const driverDocId = (driverField) => {
+  if (!driverField) return null;
+  if (typeof driverField === 'object' && driverField._id) return driverField._id;
+  return driverField;
+};
 
 const VEHICLE_FARE_CONFIG = {
   bike: { baseFare: 20, perKm: 8, minFare: 35 },
@@ -325,10 +341,10 @@ router.get('/booking/:id', authenticate, requireRole('customer'), async (req, re
 // GET /api/customer/booking-cancel-quote?bookingId=
 router.get('/booking-cancel-quote', authenticate, requireRole('customer'), async (req, res) => {
   try {
-    const bookingId = `${req.query.bookingId || ''}`.trim();
-    if (!bookingId) return res.status(400).json({ error: 'bookingId required' });
-    const booking = await Booking.findById(bookingId).lean();
-    if (!booking || booking.customer.toString() !== req.userId.toString()) {
+    const bookingRef = `${req.query.bookingId || req.query.id || ''}`.trim();
+    if (!bookingRef) return res.status(400).json({ error: 'bookingId required' });
+    const booking = await findCustomerBookingRef(req.userId, bookingRef).lean();
+    if (!booking) {
       return res.status(404).json({ error: 'Booking not found' });
     }
     if ([BOOKING_STATUSES.COMPLETED, BOOKING_STATUSES.CANCELLED].includes(booking.status)) {
@@ -355,9 +371,10 @@ router.get('/booking-cancel-quote', authenticate, requireRole('customer'), async
 // POST /api/customer/cancel-booking
 router.post('/cancel-booking', authenticate, requireRole('customer'), async (req, res) => {
   try {
-    const { bookingId, reason } = req.body;
-    const booking = await Booking.findById(bookingId).populate('driver');
-    if (!booking || booking.customer.toString() !== req.userId.toString()) {
+    const bookingRef = `${req.body.bookingId || req.body.id || ''}`.trim();
+    const { reason } = req.body;
+    const booking = await findCustomerBookingRef(req.userId, bookingRef).populate('driver');
+    if (!booking) {
       return res.status(404).json({ error: 'Booking not found' });
     }
     if ([BOOKING_STATUSES.COMPLETED, BOOKING_STATUSES.CANCELLED].includes(booking.status)) {
@@ -398,9 +415,13 @@ router.post('/cancel-booking', authenticate, requireRole('customer'), async (req
       metadata: { cancelledBy: 'customer', reason: booking.cancellationReason }
     });
 
-    if (booking.driver) {
-      const driver = await Driver.findById(booking.driver);
-      if (driver) { driver.isAvailable = true; await driver.save(); }
+    const driverRef = driverDocId(booking.driver);
+    if (driverRef) {
+      const driver = await Driver.findById(driverRef);
+      if (driver) {
+        driver.isAvailable = true;
+        await driver.save();
+      }
     }
 
     if (req.io) {

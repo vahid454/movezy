@@ -592,10 +592,12 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
   Future<void> _cancel() async {
     if (_activeBooking == null) return;
+    final b = _activeBooking!;
+    final ref = b.id.trim().isNotEmpty ? b.id : b.bookingId;
     final r = await runCustomerCancelBookingFlow(
       context: context,
       api: _api,
-      bookingMongoId: _activeBooking!.id,
+      bookingRef: ref,
     );
     if (r == null || !mounted) return;
     setState(() {

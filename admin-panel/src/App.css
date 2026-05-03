@@ -269,9 +269,34 @@ label { display: block; font-size: 12px; color: var(--text-secondary); margin-bo
 .back-btn { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); background: none; border: none; cursor: pointer; font-family: inherit; font-size: 14px; margin-bottom: 20px; padding: 0; }
 .back-btn:hover { color: var(--text); }
 
-/* MODAL */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; width: 100%; max-width: 440px; }
+/* MODAL — top stays visible when the sheet is tall or the page was scrolled */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 1000;
+  padding: max(12px, env(safe-area-inset-top, 0px)) 16px 32px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  width: 100%;
+  max-width: 440px;
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
+  margin-bottom: 24px;
+}
 .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
 
