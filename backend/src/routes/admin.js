@@ -55,9 +55,17 @@ const mergeStatusAndSearch = (baseFilter, searchFilter) => {
 
 const toAbsoluteAssetUrl = (req, documentPath) => {
   if (!documentPath) return documentPath;
-  if (/^https?:\/\//i.test(documentPath)) return documentPath;
 
   let normalizedPath = `${documentPath}`;
+  if (/^https?:\/\//i.test(normalizedPath)) {
+    try {
+      const parsed = new URL(normalizedPath);
+      normalizedPath = parsed.pathname || normalizedPath;
+    } catch (_) {
+      return documentPath;
+    }
+  }
+
   // Handle historical absolute filesystem paths such as
   // /opt/render/project/src/backend/uploads/documents/<file>.
   if (normalizedPath.includes('/uploads/')) {
