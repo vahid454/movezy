@@ -55,6 +55,12 @@ export default function DriverDetail() {
 
   const user = driver.user || {};
   const docs = driver.documents || {};
+  const resolveDocumentUrl = (value) => {
+    if (!value) return '';
+    if (/^https?:\/\//i.test(value)) return value;
+    if (value.startsWith('/')) return value;
+    return `/${value}`;
+  };
 
   return (
     <div>
@@ -132,7 +138,7 @@ export default function DriverDetail() {
                 <div className="doc-item" key={key}>
                   <div style={{ marginBottom: 6, fontWeight: 600 }}>{label}</div>
                   {docs[key]
-                    ? <a href={`/${docs[key]}`} target="_blank" rel="noreferrer">View Document →</a>
+                    ? <a href={resolveDocumentUrl(docs[key])} target="_blank" rel="noreferrer">View Document →</a>
                     : <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Not uploaded</span>
                   }
                 </div>

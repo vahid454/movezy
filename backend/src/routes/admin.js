@@ -57,15 +57,15 @@ const toAbsoluteAssetUrl = (req, documentPath) => {
   if (!documentPath) return documentPath;
   if (/^https?:\/\//i.test(documentPath)) return documentPath;
 
-  let normalizedPath = documentPath;
-  if (!normalizedPath.startsWith('/')) {
-    if (normalizedPath.includes('/uploads/')) {
-      normalizedPath = normalizedPath.slice(normalizedPath.indexOf('/uploads/'));
-    } else if (normalizedPath.startsWith('uploads/')) {
-      normalizedPath = `/${normalizedPath}`;
-    } else {
-      return documentPath;
-    }
+  let normalizedPath = `${documentPath}`;
+  // Handle historical absolute filesystem paths such as
+  // /opt/render/project/src/backend/uploads/documents/<file>.
+  if (normalizedPath.includes('/uploads/')) {
+    normalizedPath = normalizedPath.slice(normalizedPath.indexOf('/uploads/'));
+  } else if (normalizedPath.startsWith('uploads/')) {
+    normalizedPath = `/${normalizedPath}`;
+  } else if (!normalizedPath.startsWith('/')) {
+    return documentPath;
   }
 
   return `${req.protocol}://${req.get('host')}${normalizedPath}`;
